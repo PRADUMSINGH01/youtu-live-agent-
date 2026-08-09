@@ -31,12 +31,8 @@ RUN npm ci
 # Copy the rest of the application
 COPY . .
 
-# Make entrypoint script executable
-RUN chmod +x /app/entrypoint.sh
-
 # Set environment variable to trigger Docker-specific logic in the code
 ENV DOCKER=true
 
-# Wrap execution inside Xvfb via entrypoint script
-ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["npx", "tsx", "src/browser/init.ts"]
+# Start the bot cleanly inside xvfb-run (shell form avoids CRLF issues)
+CMD xvfb-run -a --server-args="-screen 0 1920x1080x24" npx tsx src/browser/init.ts
