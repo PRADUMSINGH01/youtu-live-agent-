@@ -17,7 +17,7 @@ async function test() {
 	
 	const browserOptions: any = isDocker ? {
 		// Production (Docker) settings
-		executablePath: "/usr/bin/chromium-browser",
+		executablePath: "/usr/bin/chromium",
 		args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--start-maximized", "--autoplay-policy=no-user-gesture-required", "--window-size=1920,1080", "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--disable-software-rasterizer"],
 		ignoreDefaultArgs: ["--mute-audio"],
 		defaultViewport: null,

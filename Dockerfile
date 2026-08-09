@@ -1,15 +1,26 @@
-FROM node:20-alpine
+FROM node:20-slim
 
-# Install FFmpeg, Chromium, and Xvfb (Virtual Framebuffer for headless rendering)
-RUN apk update && apk add --no-cache \
+# Install standard dependencies for Puppeteer, FFmpeg, and Xvfb on Debian
+RUN apt-get update && apt-get install -y \
     ffmpeg \
     chromium \
-    nss \
-    freetype \
-    harfbuzz \
-    ca-certificates \
-    ttf-freefont \
-    xvfb
+    xvfb \
+    fonts-liberation \
+    libnss3 \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libcups2 \
+    libdrm2 \
+    libgbm1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libxkbcommon0 \
+    libpango-1.0-0 \
+    libcairo2 \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -23,5 +34,5 @@ COPY . .
 # Set environment variable to trigger Docker-specific logic in the code
 ENV DOCKER=true
 
-# Start Xvfb in the background, wait 2 seconds for it to initialize, then start the bot
-CMD sh -c "Xvfb :99 -screen 0 1920x1080x24 -ac & export DISPLAY=:99 && sleep 2 && npx tsx src/browser/init.ts"
+# Start the bot using Debian's xvfb-run
+CMD ["xvfb-run", "--server-args=-screen 0 1920x1080x24", "npx", "tsx", "src/browser/init.ts"]
