@@ -34,8 +34,12 @@ async function test() {
 	// Set page viewport explicitly to 4K
 	await page.setViewport(RESOLUTION);
 
-	await page.goto("https://youtube-one-rust.vercel.app/dashboard/flag-battler", {
-		waitUntil: "networkidle2",
+	const targetUrl = process.env.TARGET_URL || "http://localhost:3000/dashboard/circle-flag-battler";
+	console.log(`Navigating to ${targetUrl}...`);
+
+	await page.goto(targetUrl, {
+		waitUntil: "domcontentloaded",
+		timeout: 60000,
 	});
 
 	// Get stream with 4K UHD settings (high bitrate VP9 codec & larger stream buffer)
