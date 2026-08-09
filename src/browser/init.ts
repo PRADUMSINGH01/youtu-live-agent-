@@ -48,13 +48,12 @@ async function test() {
 	await page.goto("https://youtube-one-rust.vercel.app/dashboard/flag-battler", { waitUntil: "networkidle2", timeout: 60000 });
 	
 	console.log("Getting stream...");
-	// Use a small frameSize so data flushes to FFmpeg continuously, avoiding buffering freezes
-	// Boost video bitrate to 5Mbps for crisp quality
+	// Use 500ms frameSize to avoid pipe buffer overflows that cause green/pixelated frame corruption
 	const stream = await getStream(page, { 
 		audio: true, 
 		video: true, 
-		frameSize: 20,
-		videoBitsPerSecond: 5000000 // 5 Mbps
+		frameSize: 500,
+		videoBitsPerSecond: 8000000 // 8 Mbps input quality
 	});
 	
 	console.log("Starting FFmpeg and streaming to YouTube...");
@@ -68,15 +67,15 @@ async function test() {
 	const ffmpegProcess = spawn(ffmpegPath, [
 		"-f", "webm", // Explicitly state input format to avoid probing errors
 		"-i", "-", // Read input from stdin
-		"-c:v", "libx264", // Video codec
-		"-preset", "ultrafast", // Preset for real-time streaming
-		"-tune", "zerolatency", // Tuning for low latency
-		"-b:v", "3000k", // Stable 3Mbps Bitrate for 720p
-		"-minrate", "3000k",
-		"-maxrate", "3000k",
-		"-bufsize", "6000k",
-		"-r", "30", // 30 FPS for reliable CPU performance in Cloud Run
-		"-g", "60", // Keyframe interval (2x framerate is standard for YT)
+		"-c:v", "libx264", // H.264 Video codec
+		"-preset", "veryfast", // High quality real-time encoding
+		"-pix_fmt", "yuv420p", // Standard crisp color space
+		"-b:v", "6000k", // 6 Mbps Bitrate (YouTube recommended for HD)
+		"-minrate", "4000k",
+		"-maxrate", "6000k",
+		"-bufsize", "12000k",
+		"-r", "30", // 30 FPS for smooth rendering
+		"-g", "30", // Keyframe every 1 second (clears any artifacts instantly)
 		"-c:a", "aac", // Audio codec
 		"-b:a", "128k", // Audio bitrate
 		"-ar", "44100", // Audio sample rate
