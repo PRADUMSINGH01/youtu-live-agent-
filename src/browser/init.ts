@@ -2,27 +2,32 @@ import { launch, getStream, wss } from "puppeteer-stream";
 import * as fs from "fs";
 import * as path from "path";
 
-// Configuration for 4K HD and Long Duration Recording
-const RESOLUTION = { width: 1920, height: 1080 }; // 4K UHD Resolution
-const RECORDING_DURATION_MS = 20 * 1000; // 3 minutes (adjust as needed, e.g., 30 * 60 * 1000 for 30 mins)
+// Configuration for True 4K UHD 60FPS Recording
+const RESOLUTION = { width: 3840, height: 2160 }; // True 4K UHD (3840x2160)
+const RECORDING_DURATION_MS = 200 * 1000; // 200 seconds
 const OUTPUT_FILE = "recording_4k.webm";
 
 const file = fs.createWriteStream(OUTPUT_FILE);
 
 async function test() {
-	console.log(`Starting 4K recording session for ${RECORDING_DURATION_MS / 1000}s...`);
+	console.log(`Starting True 4K (3840x2160 @ 60FPS) recording session for ${RECORDING_DURATION_MS / 1000}s...`);
 
 	const browser = await launch({
 		channel: "chrome",
-		headless: "new", // Modern headless mode prevents giant 4K window from overflowing physical screen
+		headless: "new",
 		defaultViewport: {
 			width: RESOLUTION.width,
 			height: RESOLUTION.height,
-			deviceScaleFactor: 1,
+			deviceScaleFactor: 2, // 2x Retina sharpness for crisp text & 3D geometry
 		},
 		args: [
 			`--window-size=${RESOLUTION.width},${RESOLUTION.height}`,
-			"--force-device-scale-factor=1",
+			"--force-device-scale-factor=2",
+			"--ignore-gpu-blocklist",
+			"--enable-gpu",
+			"--enable-webgl",
+			"--enable-accelerated-2d-canvas",
+			"--enable-zero-copy",
 			"--disable-dev-shm-usage",
 			"--no-sandbox",
 			"--hide-scrollbars",
@@ -34,8 +39,12 @@ async function test() {
 
 	const page = await browser.newPage();
 	
-	// Set page viewport explicitly to 4K
-	await page.setViewport(RESOLUTION);
+	// Set page viewport explicitly to 4K UHD with 2x device scale factor
+	await page.setViewport({
+		width: RESOLUTION.width,
+		height: RESOLUTION.height,
+		deviceScaleFactor: 2,
+	});
 
 	const targetUrl = process.env.TARGET_URL || "https://youtube-one-rust.vercel.app/dashboard/circle-flag-battler";
 	console.log(`Navigating to ${targetUrl}...`);
@@ -45,15 +54,17 @@ async function test() {
 		timeout: 60000,
 	});
 
-	// Get stream with 4K UHD settings (high bitrate VP9 codec & larger stream buffer)
+	// Get stream with True 4K UHD 60FPS settings (60 Mbps VP9 codec)
 	const stream = await getStream(page, {
 		audio: true,
 		video: true,
+		frameSize: 60, // 60 FPS
+		frameRate: 60,
 		mimeType: "video/webm;codecs=vp9",
-		videoBitsPerSecond: 25_000_000, // 25 Mbps for crystal clear 4K quality
-		audioBitsPerSecond: 128_000,
+		videoBitsPerSecond: 60_000_000, // 60 Mbps for ultra-crisp 4K video
+		audioBitsPerSecond: 256_000,   // 256 kbps studio audio
 		streamConfig: {
-			highWaterMarkMB: 1024, // 1GB buffer size for long recordings
+			highWaterMarkMB: 2048, // 2GB buffer size for high-bitrate 4K stream
 			immediateResume: true,
 		},
 	});
