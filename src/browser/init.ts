@@ -4,13 +4,19 @@ import * as path from "path";
 
 // Configuration for True 4K UHD 60FPS Recording
 const RESOLUTION = { width: 3840, height: 2160 }; // True 4K UHD (3840x2160)
-const RECORDING_DURATION_MS = 200 * 1000; // 200 seconds
-const OUTPUT_FILE = "recording_4k.webm";
+// Recording duration (default: 30 minutes / 1800s. Set RECORD_DURATION_SEC=0 for 24/7 continuous mode)
+const RECORDING_DURATION_SEC = process.env.RECORD_DURATION_SEC !== undefined ? parseInt(process.env.RECORD_DURATION_SEC) : 1800;
+const RECORDING_DURATION_MS = RECORDING_DURATION_SEC * 1000;
+const OUTPUT_FILE = process.env.OUTPUT_FILE || "recording_4k.webm";
 
 const file = fs.createWriteStream(OUTPUT_FILE);
 
 async function test() {
-	console.log(`Starting True 4K (3840x2160 @ 60FPS) recording session for ${RECORDING_DURATION_MS / 1000}s...`);
+	console.log(
+		RECORDING_DURATION_SEC > 0
+			? `Starting True 4K (3840x2160 @ 60FPS) recording session for ${RECORDING_DURATION_SEC}s (${(RECORDING_DURATION_SEC / 60).toFixed(1)} mins)...`
+			: `Starting 24/7 Continuous 4K (3840x2160 @ 60FPS) Live Stream...`
+	);
 
 	const browser = await launch({
 		channel: "chrome",
@@ -71,20 +77,24 @@ async function test() {
 	console.log("Recording started in 4K resolution (3840x2160)...");
 	stream.pipe(file);
 
-	// Stop recording after duration completes
-	setTimeout(async () => {
-		console.log("Stopping recording...");
-		
-		await stream.destroy();
-		file.end();
+	// Handle recording stop or 24/7 continuous stream
+	if (RECORDING_DURATION_SEC > 0 && isFinite(RECORDING_DURATION_MS)) {
+		setTimeout(async () => {
+			console.log(`Duration of ${RECORDING_DURATION_SEC}s reached. Stopping recording...`);
+			
+			await stream.destroy();
+			file.end();
 
-		file.on("finish", async () => {
-			console.log(`Finished! Saved 4K recording to ${OUTPUT_FILE}`);
-			await browser.close();
-			(await wss).close();
-			process.exit(0);
-		});
-	}, RECORDING_DURATION_MS);
+			file.on("finish", async () => {
+				console.log(`Finished! Saved 4K recording to ${OUTPUT_FILE}`);
+				await browser.close();
+				(await wss).close();
+				process.exit(0);
+			});
+		}, RECORDING_DURATION_MS);
+	} else {
+		console.log("24/7 Continuous Mode Active. Stream recording will run indefinitely (Press Ctrl+C to stop)...");
+	}
 }
 
 test().catch((err) => {
