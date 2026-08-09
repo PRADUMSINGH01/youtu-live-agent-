@@ -59,7 +59,6 @@ async function test() {
 		audio: true,
 		video: true,
 		frameSize: 60, // 60 FPS
-		frameRate: 60,
 		mimeType: "video/webm;codecs=vp9",
 		videoBitsPerSecond: 60_000_000, // 60 Mbps for ultra-crisp 4K video
 		audioBitsPerSecond: 256_000,   // 256 kbps studio audio
