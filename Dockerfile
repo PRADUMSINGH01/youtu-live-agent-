@@ -34,5 +34,5 @@ COPY . .
 # Set environment variable to trigger Docker-specific logic in the code
 ENV DOCKER=true
 
-# Start the bot using Debian's xvfb-run
-CMD ["xvfb-run", "--server-args=-screen 0 1920x1080x24", "npx", "tsx", "src/browser/init.ts"]
+# Start Xvfb directly in the background so file descriptors for Puppeteer's pipe mode are preserved
+CMD sh -c "Xvfb :99 -screen 0 1920x1080x24 -ac & export DISPLAY=:99 && sleep 1 && npx tsx src/browser/init.ts"
