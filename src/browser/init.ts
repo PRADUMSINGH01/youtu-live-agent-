@@ -10,6 +10,7 @@ const RTMP_URL = `rtmp://a.rtmp.youtube.com/live2/${STREAM_KEY}`;
 const isDocker = process.env.DOCKER === "true";
 console.log(isDocker, RTMP_URL);
 let streamStatus = "Starting up... Browser and FFmpeg are initializing.";
+const ffmpegLogs: string[] = [];
 
 async function test() {
 	console.log("Launching browser...");
@@ -73,14 +74,19 @@ async function test() {
 	]);
 
 	ffmpegProcess.stderr.on("data", (data) => {
-		const logStr = data.toString();
-		console.log(logStr);
+		const logStr = data.toString().trim();
+		if (logStr) {
+			console.log(logStr);
+			ffmpegLogs.push(logStr);
+			// Keep only the last 15 lines of logs for the web dashboard
+			if (ffmpegLogs.length > 15) ffmpegLogs.shift();
+		}
 		
 		// If FFmpeg is outputting frame metrics, it means it is successfully sending data to YouTube!
 		if (logStr.includes("frame=") || logStr.includes("fps=")) {
-			streamStatus = "Livestream bot is running! Data is successfully reaching YouTube!";
+			streamStatus = "🟢 Livestream bot is running! Data is actively reaching YouTube!";
 		} else if (logStr.toLowerCase().includes("error")) {
-			streamStatus = "FFmpeg Error: " + logStr;
+			streamStatus = "🔴 FFmpeg Error: " + logStr;
 		}
 	});
 
@@ -100,7 +106,39 @@ const app = express();
 const port = process.env.PORT || 8080;
 
 app.get("/", (req, res) => {
-	res.send(streamStatus);
+	const html = `
+		<!DOCTYPE html>
+		<html>
+			<head>
+				<title>YouTube Agent Dashboard</title>
+				<!-- Automatically refresh the page every 3 seconds to see new logs -->
+				<meta http-equiv="refresh" content="3">
+				<style>
+					body { font-family: 'Courier New', Courier, monospace; background: #0d1117; color: #58a6ff; padding: 20px; line-height: 1.5; }
+					h1 { color: #c9d1d9; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
+					.card { background: #161b22; padding: 20px; border-radius: 8px; border: 1px solid #30363d; margin-bottom: 20px; }
+					.highlight { color: #7ee787; font-weight: bold; }
+					pre { background: #010409; padding: 15px; border-radius: 5px; overflow-x: auto; color: #e6edf3; font-size: 14px; }
+				</style>
+			</head>
+			<body>
+				<h1>📺 YouTube Live Agent Dashboard</h1>
+				
+				<div class="card">
+					<h3>⚙️ System Status</h3>
+					<p><strong>Environment:</strong> <span class="highlight">${isDocker ? "🐳 Docker (Google Cloud Run)" : "💻 Local Machine (Windows)"}</span></p>
+					<p><strong>Stream Status:</strong> <span class="highlight">${streamStatus}</span></p>
+				</div>
+
+				<div class="card">
+					<h3>🎥 Live FFmpeg Logs</h3>
+					<p><em>(Auto-refreshing every 3 seconds...)</em></p>
+					<pre>${ffmpegLogs.length > 0 ? ffmpegLogs.join("\\n") : "Waiting for FFmpeg to start..."}</pre>
+				</div>
+			</body>
+		</html>
+	`;
+	res.send(html);
 });
 
 app.listen(port, () => {
