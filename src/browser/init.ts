@@ -68,13 +68,16 @@ async function test() {
 		"-f", "webm", // Explicitly state input format to avoid probing errors
 		"-i", "-", // Read input from stdin
 		"-c:v", "libx264", // H.264 Video codec
-		"-preset", "superfast", // Ultra-smooth real-time 1080p encoding
+		"-preset", "veryfast", // Fast real-time encoding
+		"-tune", "zerolatency", // Zero latency tuning
+		"-bf", "0", // CRITICAL: Disable B-frames to prevent DTS out-of-order crashes
+		"-max_interleave_delta", "0", // Allow smooth audio/video interleaving over pipe
 		"-pix_fmt", "yuv420p", // Standard crisp color space
-		"-b:v", "8000k", // 8 Mbps Bitrate (Full HD 1080p quality)
-		"-minrate", "6000k",
-		"-maxrate", "8000k",
-		"-bufsize", "16000k",
-		"-r", "30", // 30 FPS for smooth 1080p rendering
+		"-b:v", "6000k", // 6 Mbps Bitrate (HD quality)
+		"-minrate", "4000k",
+		"-maxrate", "6000k",
+		"-bufsize", "12000k",
+		"-r", "30", // 30 FPS for smooth rendering
 		"-g", "30", // Keyframe every 1 second (clears any artifacts instantly)
 		"-c:a", "aac", // Audio codec
 		"-b:a", "128k", // Audio bitrate
