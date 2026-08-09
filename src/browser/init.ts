@@ -1,164 +1,75 @@
-import express from "express";
-import dotenv from "dotenv";
-import path from "path";
-import fs from "fs";
-import { recordSegment } from "./recorder.js";
-import { streamSegment } from "./streamer.js";
+import { launch, getStream, wss } from "puppeteer-stream";
+import * as fs from "fs";
+import * as path from "path";
 
-dotenv.config();
+// Configuration for 4K HD and Long Duration Recording
+const RESOLUTION = { width: 1920, height: 1080 }; // 4K UHD Resolution
+const RECORDING_DURATION_MS = 20 * 1000; // 3 minutes (adjust as needed, e.g., 30 * 60 * 1000 for 30 mins)
+const OUTPUT_FILE = "recording_4k.webm";
 
-const STREAM_KEY = process.env.YOUTUBE_STREAM_KEY || "w263-863b-mq4c-5bce-6cqh";
-const RTMP_URL = `rtmps://a.rtmp.youtube.com/live2/${STREAM_KEY}`;
-const isDocker = process.env.DOCKER === "true";
+const file = fs.createWriteStream(OUTPUT_FILE);
 
-const SEGMENT_DIR = isDocker ? "/tmp/segments" : path.join(__dirname, "../../tmp/segments");
-const TARGET_URL = "https://youtube-one-rust.vercel.app/dashboard/flag-battler";
-const SEGMENT_DURATION = 300; // 5 minutes per video segment
+async function test() {
+	console.log(`Starting 4K recording session for ${RECORDING_DURATION_MS / 1000}s...`);
 
-let streamStatus = "Initializing Segment Buffer Pipeline...";
-let activeSegmentStreaming = "None";
-let activeSegmentRecording = "None";
-const liveLogs: string[] = [];
-
-function addLog(msg: string) {
-	console.log(msg);
-	liveLogs.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
-	if (liveLogs.length > 20) liveLogs.shift();
-}
-
-async function orchestratePipeline() {
-	addLog("🚀 Starting Segment-Buffered YouTube Live Pipeline...");
-
-	if (!fs.existsSync(SEGMENT_DIR)) {
-		fs.mkdirSync(SEGMENT_DIR, { recursive: true });
-	}
-
-	let segmentIndex = 1;
-
-	// Phase 1: Record initial Segment #1 (Initial Buffer)
-	const firstSegmentPath = path.join(SEGMENT_DIR, `segment_${segmentIndex}.mp4`);
-	activeSegmentRecording = `segment_${segmentIndex}.mp4`;
-	streamStatus = "🟡 Recording Initial 5-Minute Buffer Segment #1...";
-	addLog(`Recording initial segment #1: ${firstSegmentPath}`);
-
-	try {
-		await recordSegment({
-			url: TARGET_URL,
-			outputFilePath: firstSegmentPath,
-			durationSeconds: SEGMENT_DURATION
-		});
-	} catch (err: any) {
-		addLog(`❌ Initial recording error: ${err.message}`);
-	}
-
-	// Main Pipeline Loop: Stream current segment while recording next segment in background
-	while (true) {
-		const currentSegmentPath = path.join(SEGMENT_DIR, `segment_${segmentIndex}.mp4`);
-		const nextSegmentIndex = segmentIndex + 1;
-		const nextSegmentPath = path.join(SEGMENT_DIR, `segment_${nextSegmentIndex}.mp4`);
-
-		if (!fs.existsSync(currentSegmentPath)) {
-			addLog(`⚠️ Segment ${currentSegmentPath} missing, re-recording...`);
-			activeSegmentRecording = `segment_${segmentIndex}.mp4`;
-			try {
-				await recordSegment({
-					url: TARGET_URL,
-					outputFilePath: currentSegmentPath,
-					durationSeconds: SEGMENT_DURATION
-				});
-			} catch (err: any) {
-				addLog(`❌ Re-recording error: ${err.message}`);
-			}
-		}
-
-		addLog(`▶️ Starting live stream for segment #${segmentIndex}`);
-		activeSegmentStreaming = `segment_${segmentIndex}.mp4`;
-		streamStatus = `🟢 Live Streaming Segment #${segmentIndex} to YouTube`;
-
-		// Trigger background recording of next segment simultaneously!
-		activeSegmentRecording = `segment_${nextSegmentIndex}.mp4`;
-		addLog(`🔴 Background recording started for segment #${nextSegmentIndex}`);
-		
-		const recordingPromise = recordSegment({
-			url: TARGET_URL,
-			outputFilePath: nextSegmentPath,
-			durationSeconds: SEGMENT_DURATION
-		}).catch((err: any) => {
-			addLog(`❌ Background recording error for #${nextSegmentIndex}: ${err.message}`);
-		});
-
-		// Stream current segment to YouTube
-		try {
-			await streamSegment({
-				filePath: currentSegmentPath,
-				rtmpUrl: RTMP_URL,
-				onLog: (logStr: string) => {
-					if (logStr.includes("frame=") || logStr.includes("fps=")) {
-						addLog(logStr);
-					}
-				}
-			});
-		} catch (err: any) {
-			addLog(`❌ Streamer error: ${err.message}`);
-		}
-
-		// Ensure next segment recording finishes before continuing loop
-		await recordingPromise;
-
-		// Advance index
-		segmentIndex++;
-	}
-}
-
-// Start Express Dashboard Server
-const app = express();
-const port = process.env.PORT || 8080;
-
-app.get("/health", (req, res) => {
-	res.status(200).send("OK");
-});
-
-app.get("/", (req, res) => {
-	const html = `
-		<!DOCTYPE html>
-		<html>
-			<head>
-				<title>YouTube Agent Dashboard</title>
-				<meta http-equiv="refresh" content="3">
-				<style>
-					body { font-family: 'Courier New', Courier, monospace; background: #0d1117; color: #58a6ff; padding: 20px; line-height: 1.5; }
-					h1 { color: #c9d1d9; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
-					.card { background: #161b22; padding: 20px; border-radius: 8px; border: 1px solid #30363d; margin-bottom: 20px; }
-					.highlight { color: #7ee787; font-weight: bold; }
-					.recording { color: #f2cc60; font-weight: bold; }
-					pre { background: #010409; padding: 15px; border-radius: 5px; overflow-x: auto; color: #e6edf3; font-size: 14px; }
-				</style>
-			</head>
-			<body>
-				<h1>📺 YouTube Segment-Buffered Live Agent</h1>
-				
-				<div class="card">
-					<h3>⚙️ Pipeline Status</h3>
-					<p><strong>Environment:</strong> <span class="highlight">${isDocker ? "🐳 Docker (Google Cloud Run)" : "💻 Local Machine (Windows)"}</span></p>
-					<p><strong>Pipeline Status:</strong> <span class="highlight">${streamStatus}</span></p>
-					<p><strong>Active Streaming Segment:</strong> <span class="highlight">${activeSegmentStreaming}</span></p>
-					<p><strong>Background Recording Segment:</strong> <span class="recording">${activeSegmentRecording}</span></p>
-				</div>
-
-				<div class="card">
-					<h3>🎥 Real-Time Pipeline Logs</h3>
-					<p><em>(Auto-refreshing every 3 seconds...)</em></p>
-					<pre>${liveLogs.length > 0 ? liveLogs.join("\n") : "Initializing logs..."}</pre>
-				</div>
-			</body>
-		</html>
-	`;
-	res.send(html);
-});
-
-app.listen(port, () => {
-	console.log(`Health check & Dashboard server listening on port ${port}`);
-	orchestratePipeline().catch((err) => {
-		console.error("Pipeline Orchestration Error:", err);
+	const browser = await launch({
+		channel: "chrome",
+		headless: "new", // Modern headless mode prevents giant 4K window from overflowing physical screen
+		defaultViewport: {
+			width: RESOLUTION.width,
+			height: RESOLUTION.height,
+			deviceScaleFactor: 1,
+		},
+		args: [
+			`--window-size=${RESOLUTION.width},${RESOLUTION.height}`,
+			"--force-device-scale-factor=1",
+			"--disable-dev-shm-usage", // Prevents memory exhaustion during high-res/long recordings
+			"--no-sandbox",
+			"--hide-scrollbars",
+		],
 	});
+
+	const page = await browser.newPage();
+	
+	// Set page viewport explicitly to 4K
+	await page.setViewport(RESOLUTION);
+
+	await page.goto("https://youtube-one-rust.vercel.app/dashboard/flag-battler", {
+		waitUntil: "networkidle2",
+	});
+
+	// Get stream with 4K UHD settings (high bitrate VP9 codec & larger stream buffer)
+	const stream = await getStream(page, {
+		audio: true,
+		video: true,
+		mimeType: "video/webm;codecs=vp9",
+		videoBitsPerSecond: 25_000_000, // 25 Mbps for crystal clear 4K quality
+		audioBitsPerSecond: 128_000,
+		streamConfig: {
+			highWaterMarkMB: 1024, // 1GB buffer size for long recordings
+			immediateResume: true,
+		},
+	});
+
+	console.log("Recording started in 4K resolution (3840x2160)...");
+	stream.pipe(file);
+
+	// Stop recording after duration completes
+	setTimeout(async () => {
+		console.log("Stopping recording...");
+		
+		await stream.destroy();
+		file.end();
+
+		file.on("finish", async () => {
+			console.log(`Finished! Saved 4K recording to ${OUTPUT_FILE}`);
+			await browser.close();
+			(await wss).close();
+			process.exit(0);
+		});
+	}, RECORDING_DURATION_MS);
+}
+
+test().catch((err) => {
+	console.error("Recording error:", err);
 });
