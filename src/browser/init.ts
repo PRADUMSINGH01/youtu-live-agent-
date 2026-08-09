@@ -18,11 +18,11 @@ async function test() {
 	const browserOptions: any = isDocker ? {
 		// Production (Docker) settings
 		executablePath: "/usr/bin/chromium",
-		args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--start-maximized", "--autoplay-policy=no-user-gesture-required", "--window-size=1920,1080", "--no-first-run", "--no-default-browser-check", "--enable-webgl", "--use-gl=angle", "--use-angle=swiftshader"],
+		args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--start-maximized", "--autoplay-policy=no-user-gesture-required", "--window-size=1280,720", "--no-first-run", "--no-default-browser-check", "--enable-webgl", "--use-gl=angle", "--use-angle=swiftshader"],
 		ignoreDefaultArgs: ["--mute-audio"],
 		defaultViewport: {
-			width: 1920,
-			height: 1080
+			width: 1280,
+			height: 720
 		},
 		timeout: 120000,
 		protocolTimeout: 120000,
@@ -71,12 +71,12 @@ async function test() {
 		"-c:v", "libx264", // Video codec
 		"-preset", "ultrafast", // Preset for real-time streaming
 		"-tune", "zerolatency", // Tuning for low latency
-		"-b:v", "4500k", // Constant Bitrate 4.5Mbps
-		"-minrate", "4500k",
-		"-maxrate", "4500k",
-		"-bufsize", "9000k",
-		"-r", "60", // 60 FPS for smooth YouTube streaming
-		"-g", "120", // Keyframe interval (2x framerate is standard for YT)
+		"-b:v", "3000k", // Stable 3Mbps Bitrate for 720p
+		"-minrate", "3000k",
+		"-maxrate", "3000k",
+		"-bufsize", "6000k",
+		"-r", "30", // 30 FPS for reliable CPU performance in Cloud Run
+		"-g", "60", // Keyframe interval (2x framerate is standard for YT)
 		"-c:a", "aac", // Audio codec
 		"-b:a", "128k", // Audio bitrate
 		"-ar", "44100", // Audio sample rate
@@ -115,6 +115,10 @@ async function test() {
 // Start a minimal Express server to satisfy Google Cloud Run's port requirement
 const app = express();
 const port = process.env.PORT || 8080;
+
+app.get("/health", (req, res) => {
+	res.status(200).send("OK");
+});
 
 app.get("/", (req, res) => {
 	const html = `
