@@ -4,8 +4,8 @@ import * as path from "path";
 
 // Configuration for True 4K UHD 60FPS Recording
 const RESOLUTION = { width: 3840, height: 2160 }; // True 4K UHD (3840x2160)
-// Recording duration (default: 30 minutes / 1800s. Set RECORD_DURATION_SEC=0 for 24/7 continuous mode)
-const RECORDING_DURATION_SEC = process.env.RECORD_DURATION_SEC !== undefined ? parseInt(process.env.RECORD_DURATION_SEC) : 1800;
+// Recording duration (default: 2 minutes / 120s for testing. Set RECORD_DURATION_SEC=0 for 24/7 continuous mode)
+const RECORDING_DURATION_SEC = process.env.RECORD_DURATION_SEC !== undefined ? parseInt(process.env.RECORD_DURATION_SEC) : 120;
 const RECORDING_DURATION_MS = RECORDING_DURATION_SEC * 1000;
 const OUTPUT_FILE = process.env.OUTPUT_FILE || "recording_4k.webm";
 
