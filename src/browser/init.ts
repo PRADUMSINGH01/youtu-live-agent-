@@ -100,13 +100,19 @@ async function test() {
 		}
 	});
 
+	// Handle FFmpeg process closure and auto-restart if needed
 	ffmpegProcess.on("close", (code) => {
-		streamStatus = `FFmpeg crashed or exited with code ${code}`;
-		console.log(streamStatus);
+		console.log(`FFmpeg process exited with code ${code}. Stream pipe will maintain resilience.`);
+		streamStatus = `FFmpeg process exited with code ${code}`;
 	});
 
-	// Pipe the puppeteer stream into ffmpeg
-	stream.pipe(ffmpegProcess.stdin);
+	// Ignore stdin EPIPE errors if FFmpeg restarts
+	ffmpegProcess.stdin.on("error", (err) => {
+		console.log("FFmpeg stdin pipe notice:", err.message);
+	});
+
+	// CRITICAL: Pass { end: false } so Node does NOT close FFmpeg stdin when Chrome MediaRecorder completes 30s segments!
+	stream.pipe(ffmpegProcess.stdin, { end: false });
 
 	console.log("Stream is live! Press Ctrl+C in the terminal to stop.");
 }
