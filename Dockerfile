@@ -23,5 +23,5 @@ COPY . .
 # Set environment variable to trigger Docker-specific logic in the code
 ENV DOCKER=true
 
-# Start Xvfb in the background and export the DISPLAY variable so Puppeteer can find it
-CMD sh -c "Xvfb :99 -screen 0 1920x1080x24 -ac & export DISPLAY=:99 && npx tsx src/browser/init.ts"
+# Start Xvfb in the background, wait 2 seconds for it to initialize, then start the bot
+CMD sh -c "Xvfb :99 -screen 0 1920x1080x24 -ac & export DISPLAY=:99 && sleep 2 && npx tsx src/browser/init.ts"
