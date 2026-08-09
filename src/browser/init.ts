@@ -1,126 +1,116 @@
-import { launch, getStream, wss } from "puppeteer-stream";
-import { spawn } from "child_process";
 import express from "express";
 import dotenv from "dotenv";
+import path from "path";
+import fs from "fs";
+import { recordSegment } from "./recorder.js";
+import { streamSegment } from "./streamer.js";
+
 dotenv.config();
+
 const STREAM_KEY = process.env.YOUTUBE_STREAM_KEY || "w263-863b-mq4c-5bce-6cqh";
 const RTMP_URL = `rtmps://a.rtmp.youtube.com/live2/${STREAM_KEY}`;
-
-// Flag to check if we are running inside the Docker container
 const isDocker = process.env.DOCKER === "true";
-console.log(isDocker, RTMP_URL);
-let streamStatus = "Starting up... Browser and FFmpeg are initializing.";
-const ffmpegLogs: string[] = [];
 
-async function test() {
-	console.log("Launching browser...");
-	
-	const browserOptions: any = isDocker ? {
-		// Production (Docker) settings
-		executablePath: "/usr/bin/chromium",
-		args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--start-maximized", "--autoplay-policy=no-user-gesture-required", "--window-size=1920,1080", "--no-first-run", "--no-default-browser-check", "--enable-webgl", "--use-gl=angle", "--use-angle=swiftshader"],
-		ignoreDefaultArgs: ["--mute-audio"],
-		defaultViewport: {
-			width: 1920,
-			height: 1080
-		},
-		timeout: 120000,
-		protocolTimeout: 120000,
-	} : {
-		// Local (Windows) settings
-		channel: "chrome",
-		args: ["--start-maximized", "--autoplay-policy=no-user-gesture-required", "--no-first-run", "--no-default-browser-check"],
-		ignoreDefaultArgs: ["--mute-audio"],
-		defaultViewport: {
-			width: 1920,
-			height: 1080,
-		},
-		timeout: 60000,
-	};
+const SEGMENT_DIR = isDocker ? "/tmp/segments" : path.join(__dirname, "../../tmp/segments");
+const TARGET_URL = "https://youtube-one-rust.vercel.app/dashboard/flag-battler";
+const SEGMENT_DURATION = 300; // 5 minutes per video segment
 
-	const browser = await launch(browserOptions);
+let streamStatus = "Initializing Segment Buffer Pipeline...";
+let activeSegmentStreaming = "None";
+let activeSegmentRecording = "None";
+const liveLogs: string[] = [];
 
-	const page = await browser.newPage();
-	// Set standard Chrome User-Agent so Vercel/Next.js does not block the container
-	await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
-	
-	console.log("Navigating to page...");
-	await page.goto("https://youtube-one-rust.vercel.app/dashboard/flag-battler", { waitUntil: "networkidle2", timeout: 60000 });
-	
-	console.log("Getting stream...");
-	// Use 500ms frameSize to avoid pipe buffer overflows that cause green/pixelated frame corruption
-	const stream = await getStream(page, { 
-		audio: true, 
-		video: true, 
-		frameSize: 500,
-		videoBitsPerSecond: 8000000 // 8 Mbps input quality
-	});
-	
-	console.log("Starting FFmpeg and streaming to YouTube...");
-	
-	// Use system PATH ffmpeg in Docker, or the hardcoded absolute path locally
-	const ffmpegPath = isDocker 
-		? "ffmpeg" 
-		: "C:/Users/admin/AppData/Local/Microsoft/WinGet/Packages/Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe/ffmpeg-9.0-full_build/bin/ffmpeg.exe";
-
-	
-	const ffmpegProcess = spawn(ffmpegPath, [
-		"-f", "webm", // Explicitly state input format to avoid probing errors
-		"-i", "-", // Read input from stdin
-		"-c:v", "libx264", // H.264 Video codec
-		"-preset", "veryfast", // Fast real-time encoding
-		"-tune", "zerolatency", // Zero latency tuning
-		"-bf", "0", // CRITICAL: Disable B-frames to prevent DTS out-of-order crashes
-		"-max_interleave_delta", "0", // Allow smooth audio/video interleaving over pipe
-		"-pix_fmt", "yuv420p", // Standard crisp color space
-		"-b:v", "6000k", // 6 Mbps Bitrate (HD quality)
-		"-minrate", "4000k",
-		"-maxrate", "6000k",
-		"-bufsize", "12000k",
-		"-r", "30", // 30 FPS for smooth rendering
-		"-g", "30", // Keyframe every 1 second (clears any artifacts instantly)
-		"-c:a", "aac", // Audio codec
-		"-b:a", "128k", // Audio bitrate
-		"-ar", "44100", // Audio sample rate
-		"-f", "flv", // Output format for RTMP
-		RTMP_URL
-	]);
-
-	ffmpegProcess.stderr.on("data", (data) => {
-		const logStr = data.toString().trim();
-		if (logStr) {
-			console.log(logStr);
-			ffmpegLogs.push(logStr);
-			// Keep only the last 15 lines of logs for the web dashboard
-			if (ffmpegLogs.length > 15) ffmpegLogs.shift();
-		}
-		
-		// If FFmpeg is outputting frame metrics, it means it is successfully sending data to YouTube!
-		if (logStr.includes("frame=") || logStr.includes("fps=")) {
-			streamStatus = "🟢 Livestream bot is running! Data is actively reaching YouTube!";
-		} else if (logStr.toLowerCase().includes("error")) {
-			streamStatus = "🔴 FFmpeg Error: " + logStr;
-		}
-	});
-
-	// Handle FFmpeg process closure and auto-restart if needed
-	ffmpegProcess.on("close", (code) => {
-		console.log(`FFmpeg process exited with code ${code}. Stream pipe will maintain resilience.`);
-		streamStatus = `FFmpeg process exited with code ${code}`;
-	});
-
-	// Ignore stdin EPIPE errors if FFmpeg restarts
-	ffmpegProcess.stdin.on("error", (err) => {
-		console.log("FFmpeg stdin pipe notice:", err.message);
-	});
-
-	// CRITICAL: Pass { end: false } so Node does NOT close FFmpeg stdin when Chrome MediaRecorder completes 30s segments!
-	stream.pipe(ffmpegProcess.stdin, { end: false });
-
-	console.log("Stream is live! Press Ctrl+C in the terminal to stop.");
+function addLog(msg: string) {
+	console.log(msg);
+	liveLogs.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
+	if (liveLogs.length > 20) liveLogs.shift();
 }
 
-// Start a minimal Express server to satisfy Google Cloud Run's port requirement
+async function orchestratePipeline() {
+	addLog("🚀 Starting Segment-Buffered YouTube Live Pipeline...");
+
+	if (!fs.existsSync(SEGMENT_DIR)) {
+		fs.mkdirSync(SEGMENT_DIR, { recursive: true });
+	}
+
+	let segmentIndex = 1;
+
+	// Phase 1: Record initial Segment #1 (Initial Buffer)
+	const firstSegmentPath = path.join(SEGMENT_DIR, `segment_${segmentIndex}.mp4`);
+	activeSegmentRecording = `segment_${segmentIndex}.mp4`;
+	streamStatus = "🟡 Recording Initial 5-Minute Buffer Segment #1...";
+	addLog(`Recording initial segment #1: ${firstSegmentPath}`);
+
+	try {
+		await recordSegment({
+			url: TARGET_URL,
+			outputFilePath: firstSegmentPath,
+			durationSeconds: SEGMENT_DURATION
+		});
+	} catch (err: any) {
+		addLog(`❌ Initial recording error: ${err.message}`);
+	}
+
+	// Main Pipeline Loop: Stream current segment while recording next segment in background
+	while (true) {
+		const currentSegmentPath = path.join(SEGMENT_DIR, `segment_${segmentIndex}.mp4`);
+		const nextSegmentIndex = segmentIndex + 1;
+		const nextSegmentPath = path.join(SEGMENT_DIR, `segment_${nextSegmentIndex}.mp4`);
+
+		if (!fs.existsSync(currentSegmentPath)) {
+			addLog(`⚠️ Segment ${currentSegmentPath} missing, re-recording...`);
+			activeSegmentRecording = `segment_${segmentIndex}.mp4`;
+			try {
+				await recordSegment({
+					url: TARGET_URL,
+					outputFilePath: currentSegmentPath,
+					durationSeconds: SEGMENT_DURATION
+				});
+			} catch (err: any) {
+				addLog(`❌ Re-recording error: ${err.message}`);
+			}
+		}
+
+		addLog(`▶️ Starting live stream for segment #${segmentIndex}`);
+		activeSegmentStreaming = `segment_${segmentIndex}.mp4`;
+		streamStatus = `🟢 Live Streaming Segment #${segmentIndex} to YouTube`;
+
+		// Trigger background recording of next segment simultaneously!
+		activeSegmentRecording = `segment_${nextSegmentIndex}.mp4`;
+		addLog(`🔴 Background recording started for segment #${nextSegmentIndex}`);
+		
+		const recordingPromise = recordSegment({
+			url: TARGET_URL,
+			outputFilePath: nextSegmentPath,
+			durationSeconds: SEGMENT_DURATION
+		}).catch((err: any) => {
+			addLog(`❌ Background recording error for #${nextSegmentIndex}: ${err.message}`);
+		});
+
+		// Stream current segment to YouTube
+		try {
+			await streamSegment({
+				filePath: currentSegmentPath,
+				rtmpUrl: RTMP_URL,
+				onLog: (logStr: string) => {
+					if (logStr.includes("frame=") || logStr.includes("fps=")) {
+						addLog(logStr);
+					}
+				}
+			});
+		} catch (err: any) {
+			addLog(`❌ Streamer error: ${err.message}`);
+		}
+
+		// Ensure next segment recording finishes before continuing loop
+		await recordingPromise;
+
+		// Advance index
+		segmentIndex++;
+	}
+}
+
+// Start Express Dashboard Server
 const app = express();
 const port = process.env.PORT || 8080;
 
@@ -134,29 +124,31 @@ app.get("/", (req, res) => {
 		<html>
 			<head>
 				<title>YouTube Agent Dashboard</title>
-				<!-- Automatically refresh the page every 3 seconds to see new logs -->
 				<meta http-equiv="refresh" content="3">
 				<style>
 					body { font-family: 'Courier New', Courier, monospace; background: #0d1117; color: #58a6ff; padding: 20px; line-height: 1.5; }
 					h1 { color: #c9d1d9; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
 					.card { background: #161b22; padding: 20px; border-radius: 8px; border: 1px solid #30363d; margin-bottom: 20px; }
 					.highlight { color: #7ee787; font-weight: bold; }
+					.recording { color: #f2cc60; font-weight: bold; }
 					pre { background: #010409; padding: 15px; border-radius: 5px; overflow-x: auto; color: #e6edf3; font-size: 14px; }
 				</style>
 			</head>
 			<body>
-				<h1>📺 YouTube Live Agent Dashboard</h1>
+				<h1>📺 YouTube Segment-Buffered Live Agent</h1>
 				
 				<div class="card">
-					<h3>⚙️ System Status</h3>
+					<h3>⚙️ Pipeline Status</h3>
 					<p><strong>Environment:</strong> <span class="highlight">${isDocker ? "🐳 Docker (Google Cloud Run)" : "💻 Local Machine (Windows)"}</span></p>
-					<p><strong>Stream Status:</strong> <span class="highlight">${streamStatus}</span></p>
+					<p><strong>Pipeline Status:</strong> <span class="highlight">${streamStatus}</span></p>
+					<p><strong>Active Streaming Segment:</strong> <span class="highlight">${activeSegmentStreaming}</span></p>
+					<p><strong>Background Recording Segment:</strong> <span class="recording">${activeSegmentRecording}</span></p>
 				</div>
 
 				<div class="card">
-					<h3>🎥 Live FFmpeg Logs</h3>
+					<h3>🎥 Real-Time Pipeline Logs</h3>
 					<p><em>(Auto-refreshing every 3 seconds...)</em></p>
-					<pre>${ffmpegLogs.length > 0 ? ffmpegLogs.join("\\n") : "Waiting for FFmpeg to start..."}</pre>
+					<pre>${liveLogs.length > 0 ? liveLogs.join("\n") : "Initializing logs..."}</pre>
 				</div>
 			</body>
 		</html>
@@ -165,10 +157,8 @@ app.get("/", (req, res) => {
 });
 
 app.listen(port, () => {
-	console.log(`Health check server listening on port ${port}`);
-	// Start the actual puppeteer streaming task in the background
-	test().catch((err) => {
-		streamStatus = `Bot crashed: ${err.message}`;
-		console.error(err);
+	console.log(`Health check & Dashboard server listening on port ${port}`);
+	orchestratePipeline().catch((err) => {
+		console.error("Pipeline Orchestration Error:", err);
 	});
 });
