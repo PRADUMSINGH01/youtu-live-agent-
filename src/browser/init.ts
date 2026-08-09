@@ -16,9 +16,8 @@ async function test() {
 	console.log("Launching browser...");
 	
 	const browserOptions: any = isDocker ? {
-		// Production (Docker) settings using Chrome's native headless=new mode
+		// Production (Docker) settings
 		executablePath: "/usr/bin/chromium",
-		headless: "new",
 		args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--start-maximized", "--autoplay-policy=no-user-gesture-required", "--window-size=1920,1080", "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--disable-software-rasterizer"],
 		ignoreDefaultArgs: ["--mute-audio"],
 		defaultViewport: {
