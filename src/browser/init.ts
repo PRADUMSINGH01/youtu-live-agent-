@@ -23,9 +23,12 @@ async function test() {
 		args: [
 			`--window-size=${RESOLUTION.width},${RESOLUTION.height}`,
 			"--force-device-scale-factor=1",
-			"--disable-dev-shm-usage", // Prevents memory exhaustion during high-res/long recordings
+			"--disable-dev-shm-usage",
 			"--no-sandbox",
 			"--hide-scrollbars",
+			"--enable-usermedia-screen-capturing",
+			"--allow-http-screen-capture",
+			"--allow-running-insecure-content",
 		],
 	});
 
