@@ -2,11 +2,13 @@ import { launch, getStream, wss } from "puppeteer-stream";
 import { spawn } from "child_process";
 import express from "express";
 
-const STREAM_KEY = process.env.YOUTUBE_STREAM_KEY || "9qqy-b04d-6r7e-hd6a-9sfh";
+const STREAM_KEY = process.env.YOUTUBE_STREAM_KEY || "w263-863b-mq4c-5bce-6cqh";
 const RTMP_URL = `rtmp://a.rtmp.youtube.com/live2/${STREAM_KEY}`;
 
 // Flag to check if we are running inside the Docker container
 const isDocker = process.env.DOCKER === "true";
+
+let streamStatus = "Starting up... Browser and FFmpeg are initializing.";
 
 async function test() {
 	console.log("Launching browser...");
@@ -14,7 +16,7 @@ async function test() {
 	const browserOptions: any = isDocker ? {
 		// Production (Docker) settings
 		executablePath: "/usr/bin/chromium-browser",
-		args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--start-maximized"],
+		args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--start-maximized", "--autoplay-policy=no-user-gesture-required", "--window-size=1920,1080"],
 		ignoreDefaultArgs: ["--mute-audio"],
 		defaultViewport: null,
 	} : {
@@ -34,7 +36,8 @@ async function test() {
 	await page.goto("https://youtube-one-rust.vercel.app/dashboard/flag-battler");
 	
 	console.log("Getting stream...");
-	const stream = await getStream(page, { audio: true, video: true });
+	// Use a small frameSize so data flushes to FFmpeg continuously, avoiding buffering freezes
+	const stream = await getStream(page, { audio: true, video: true, frameSize: 20 });
 	
 	console.log("Starting FFmpeg and streaming to YouTube...");
 	
@@ -59,12 +62,20 @@ async function test() {
 	]);
 
 	ffmpegProcess.stderr.on("data", (data) => {
-		// Log FFmpeg output to help debug any future streaming issues
-		console.log(data.toString());
+		const logStr = data.toString();
+		console.log(logStr);
+		
+		// If FFmpeg is outputting frame metrics, it means it is successfully sending data to YouTube!
+		if (logStr.includes("frame=") || logStr.includes("fps=")) {
+			streamStatus = "Livestream bot is running! Data is successfully reaching YouTube!";
+		} else if (logStr.toLowerCase().includes("error")) {
+			streamStatus = "FFmpeg Error: " + logStr;
+		}
 	});
 
 	ffmpegProcess.on("close", (code) => {
-		console.log(`FFmpeg process exited with code ${code}`);
+		streamStatus = `FFmpeg crashed or exited with code ${code}`;
+		console.log(streamStatus);
 	});
 
 	// Pipe the puppeteer stream into ffmpeg
@@ -78,7 +89,7 @@ const app = express();
 const port = process.env.PORT || 8080;
 
 app.get("/", (req, res) => {
-	res.send("Livestream bot is running!");
+	res.send(streamStatus);
 });
 
 app.listen(port, () => {
