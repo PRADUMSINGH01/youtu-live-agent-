@@ -41,8 +41,11 @@ async function test() {
 	const browser = await launch(browserOptions);
 
 	const page = await browser.newPage();
+	// Set standard Chrome User-Agent so Vercel/Next.js does not block the container
+	await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
+	
 	console.log("Navigating to page...");
-	await page.goto("https://youtube-one-rust.vercel.app/dashboard/flag-battler", { timeout: 60000 });
+	await page.goto("https://youtube-one-rust.vercel.app/dashboard/flag-battler", { waitUntil: "networkidle2", timeout: 60000 });
 	
 	console.log("Getting stream...");
 	// Use a small frameSize so data flushes to FFmpeg continuously, avoiding buffering freezes
@@ -68,6 +71,10 @@ async function test() {
 		"-c:v", "libx264", // Video codec
 		"-preset", "ultrafast", // Preset for real-time streaming
 		"-tune", "zerolatency", // Tuning for low latency
+		"-b:v", "4500k", // Constant Bitrate 4.5Mbps
+		"-minrate", "4500k",
+		"-maxrate", "4500k",
+		"-bufsize", "9000k",
 		"-r", "60", // 60 FPS for smooth YouTube streaming
 		"-g", "120", // Keyframe interval (2x framerate is standard for YT)
 		"-c:a", "aac", // Audio codec
