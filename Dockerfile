@@ -1,6 +1,6 @@
 FROM node:20-alpine
 
-# Install FFmpeg and Chromium inside the container
+# Install FFmpeg, Chromium, and Xvfb (Virtual Framebuffer for headless rendering)
 RUN apk update && apk add --no-cache \
     ffmpeg \
     chromium \
@@ -8,7 +8,8 @@ RUN apk update && apk add --no-cache \
     freetype \
     harfbuzz \
     ca-certificates \
-    ttf-freefont
+    ttf-freefont \
+    xvfb
 
 WORKDIR /app
 
@@ -22,6 +23,6 @@ COPY . .
 # Set environment variable to trigger Docker-specific logic in the code
 ENV DOCKER=true
 
-# Start the bot directly using tsx since we're using TypeScript directly
-CMD ["npx", "tsx", "src/browser/init.ts"]
+# Start the bot using xvfb-run so Chromium thinks there is a physical display
+CMD ["xvfb-run", "-s", "-ac -screen 0 1920x1080x24", "npx", "tsx", "src/browser/init.ts"]
 
