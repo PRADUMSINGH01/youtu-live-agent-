@@ -18,11 +18,11 @@ async function test() {
 	const browserOptions: any = isDocker ? {
 		// Production (Docker) settings
 		executablePath: "/usr/bin/chromium",
-		args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--start-maximized", "--autoplay-policy=no-user-gesture-required", "--window-size=1280,720", "--no-first-run", "--no-default-browser-check", "--enable-webgl", "--use-gl=angle", "--use-angle=swiftshader"],
+		args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--start-maximized", "--autoplay-policy=no-user-gesture-required", "--window-size=1920,1080", "--no-first-run", "--no-default-browser-check", "--enable-webgl", "--use-gl=angle", "--use-angle=swiftshader"],
 		ignoreDefaultArgs: ["--mute-audio"],
 		defaultViewport: {
-			width: 1280,
-			height: 720
+			width: 1920,
+			height: 1080
 		},
 		timeout: 120000,
 		protocolTimeout: 120000,
@@ -68,13 +68,13 @@ async function test() {
 		"-f", "webm", // Explicitly state input format to avoid probing errors
 		"-i", "-", // Read input from stdin
 		"-c:v", "libx264", // H.264 Video codec
-		"-preset", "veryfast", // High quality real-time encoding
+		"-preset", "superfast", // Ultra-smooth real-time 1080p encoding
 		"-pix_fmt", "yuv420p", // Standard crisp color space
-		"-b:v", "6000k", // 6 Mbps Bitrate (YouTube recommended for HD)
-		"-minrate", "4000k",
-		"-maxrate", "6000k",
-		"-bufsize", "12000k",
-		"-r", "30", // 30 FPS for smooth rendering
+		"-b:v", "8000k", // 8 Mbps Bitrate (Full HD 1080p quality)
+		"-minrate", "6000k",
+		"-maxrate", "8000k",
+		"-bufsize", "16000k",
+		"-r", "30", // 30 FPS for smooth 1080p rendering
 		"-g", "30", // Keyframe every 1 second (clears any artifacts instantly)
 		"-c:a", "aac", // Audio codec
 		"-b:a", "128k", // Audio bitrate
