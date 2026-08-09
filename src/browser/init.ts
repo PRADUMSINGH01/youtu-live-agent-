@@ -4,7 +4,7 @@ import express from "express";
 import dotenv from "dotenv";
 dotenv.config();
 const STREAM_KEY = process.env.YOUTUBE_STREAM_KEY || "w263-863b-mq4c-5bce-6cqh";
-const RTMP_URL = `rtmp://a.rtmp.youtube.com/live2/${STREAM_KEY}`;
+const RTMP_URL = `rtmps://a.rtmp.youtube.com/live2/${STREAM_KEY}`;
 
 // Flag to check if we are running inside the Docker container
 const isDocker = process.env.DOCKER === "true";
