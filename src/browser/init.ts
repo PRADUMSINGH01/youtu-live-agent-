@@ -77,20 +77,34 @@ async function test() {
 	console.log("Recording started in 4K resolution (3840x2160)...");
 	stream.pipe(file);
 
+	// Graceful Cleanup Handler for Ctrl+C (SIGINT) / SIGTERM
+	let isCleaningUp = false;
+	const gracefulCleanup = async () => {
+		if (isCleaningUp) return;
+		isCleaningUp = true;
+		console.log("\nGracefully shutting down 4K recording session...");
+		try {
+			await stream.destroy();
+			file.end();
+			file.on("finish", async () => {
+				console.log(`Saved 4K recording to ${OUTPUT_FILE}`);
+				try { await browser.close(); } catch {}
+				try { (await wss).close(); } catch {}
+				process.exit(0);
+			});
+		} catch (err) {
+			process.exit(0);
+		}
+	};
+
+	process.on("SIGINT", gracefulCleanup);
+	process.on("SIGTERM", gracefulCleanup);
+
 	// Handle recording stop or 24/7 continuous stream
 	if (RECORDING_DURATION_SEC > 0 && isFinite(RECORDING_DURATION_MS)) {
 		setTimeout(async () => {
 			console.log(`Duration of ${RECORDING_DURATION_SEC}s reached. Stopping recording...`);
-			
-			await stream.destroy();
-			file.end();
-
-			file.on("finish", async () => {
-				console.log(`Finished! Saved 4K recording to ${OUTPUT_FILE}`);
-				await browser.close();
-				(await wss).close();
-				process.exit(0);
-			});
+			await gracefulCleanup();
 		}, RECORDING_DURATION_MS);
 	} else {
 		console.log("24/7 Continuous Mode Active. Stream recording will run indefinitely (Press Ctrl+C to stop)...");
