@@ -15,10 +15,12 @@ async function test() {
 		// Production (Docker) settings
 		executablePath: "/usr/bin/chromium-browser",
 		args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--start-maximized"],
+		ignoreDefaultArgs: ["--mute-audio"],
 		defaultViewport: null,
 	} : {
 		// Local (Windows) settings
 		channel: "chrome",
+		ignoreDefaultArgs: ["--mute-audio"],
 		defaultViewport: {
 			width: 1920,
 			height: 1080,
@@ -57,8 +59,8 @@ async function test() {
 	]);
 
 	ffmpegProcess.stderr.on("data", (data) => {
-		// Log FFmpeg output (can be noisy, you can comment this out if it's too much)
-		// console.log(data.toString());
+		// Log FFmpeg output to help debug any future streaming issues
+		console.log(data.toString());
 	});
 
 	ffmpegProcess.on("close", (code) => {
