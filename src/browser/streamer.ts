@@ -30,36 +30,9 @@ const RTMP_BASE_URL =
   process.env.RTMP_URL ||
   "rtmps://a.rtmp.youtube.com/live2";
 
-/**
- * Remove a trailing slash so we don't accidentally create:
- *
- * live2//stream-key
- */
 const STREAM_URL =
   `${RTMP_BASE_URL.replace(/\/+$/, "")}/${STREAM_KEY}`;
 
-const WIDTH = Number(
-  process.env.STREAM_WIDTH || 1920,
-);
-
-const HEIGHT = Number(
-  process.env.STREAM_HEIGHT || 1080,
-);
-
-const FPS = Number(
-  process.env.STREAM_FPS || 60,
-);
-
-const VIDEO_BITRATE =
-  process.env.VIDEO_BITRATE || "6000k";
-
-const AUDIO_BITRATE =
-  process.env.AUDIO_BITRATE || "128k";
-
-/**
- * Wait 5 seconds before restarting FFmpeg
- * if the process unexpectedly exits.
- */
 const RESTART_DELAY_MS = 5000;
 
 /**
@@ -69,9 +42,7 @@ const RESTART_DELAY_MS = 5000;
  */
 
 let ffmpeg: ChildProcess | null = null;
-
 let stopping = false;
-
 let restartTimer: NodeJS.Timeout | null = null;
 
 /**
@@ -92,88 +63,49 @@ function buildFfmpegArgs(): string[] {
      * --------------------------------------------------------
      */
 
-    // Read the prerecorded video in real time.
+    // Read the prerecorded video at real-time speed.
     "-re",
 
-    // Loop the video forever.
+    // Loop forever.
     "-stream_loop",
     "-1",
 
-    // Video input.
+    // Input video.
     "-i",
     RESOLVED_INPUT,
 
     /**
      * --------------------------------------------------------
-     * SILENT AUDIO
-     * --------------------------------------------------------
-     *
-     * Some YouTube Live configurations work better when
-     * the stream contains an audio track.
-     *
-     * We generate silent stereo AAC audio.
-     */
-
-    "-f",
-    "lavfi",
-
-    "-i",
-    "anullsrc=channel_layout=stereo:sample_rate=44100",
-
-    /**
-     * --------------------------------------------------------
      * VIDEO
      * --------------------------------------------------------
+     *
+     * IMPORTANT:
+     *
+     * The source video is already H.264.
+     * Do NOT re-encode it.
+     *
+     * This dramatically reduces CPU usage.
      */
-
-    // Your source is already 1920x1080.
-    // No scale filter is necessary.
-
-    "-r",
-    String(FPS),
 
     "-c:v",
-    "libx264",
-
-    // Good CPU/quality balance for the VPS.
-    "-preset",
-    "veryfast",
-
-    // Target bitrate.
-    "-b:v",
-    VIDEO_BITRATE,
-
-    // Maximum bitrate.
-    "-maxrate",
-    VIDEO_BITRATE,
-
-    // Rate-control buffer.
-    "-bufsize",
-    "12000k",
-
-    // Broad YouTube/player compatibility.
-    "-pix_fmt",
-    "yuv420p",
-
-    /**
-     * 2-second keyframe interval.
-     *
-     * 60 FPS × 2 seconds = 120 frames.
-     */
-    "-g",
-    String(FPS * 2),
+    "copy",
 
     /**
      * --------------------------------------------------------
      * AUDIO
      * --------------------------------------------------------
+     *
+     * test.mp4 already contains AAC audio.
+     *
+     * We convert it to stereo AAC for broad YouTube
+     * compatibility.
      */
 
     "-c:a",
     "aac",
 
     "-b:a",
-    AUDIO_BITRATE,
+    "128k",
 
     "-ar",
     "44100",
@@ -187,13 +119,13 @@ function buildFfmpegArgs(): string[] {
      * --------------------------------------------------------
      */
 
-    // Video from MP4.
+    // Video from the MP4.
     "-map",
     "0:v:0",
 
-    // Silent audio from lavfi.
+    // Audio from the MP4.
     "-map",
-    "1:a:0",
+    "0:a:0",
 
     /**
      * --------------------------------------------------------
@@ -201,7 +133,7 @@ function buildFfmpegArgs(): string[] {
      * --------------------------------------------------------
      */
 
-    // RTMP/RTMPS requires FLV.
+    // RTMP/RTMPS uses FLV.
     "-f",
     "flv",
 
@@ -226,39 +158,21 @@ function startFfmpeg(): void {
 
   if (!fs.existsSync(RESOLVED_INPUT)) {
     console.error(
-      `Input video file not found: ${RESOLVED_INPUT}`,
+      `[Streamer] Input video not found: ${RESOLVED_INPUT}`,
     );
 
     process.exit(1);
   }
 
-  /**
-   * Validate configuration.
-   */
-
-  if (!Number.isFinite(WIDTH) || WIDTH <= 0) {
-    throw new Error("Invalid STREAM_WIDTH");
-  }
-
-  if (!Number.isFinite(HEIGHT) || HEIGHT <= 0) {
-    throw new Error("Invalid STREAM_HEIGHT");
-  }
-
-  if (!Number.isFinite(FPS) || FPS <= 0) {
-    throw new Error("Invalid STREAM_FPS");
-  }
-
   console.log("");
   console.log("====================================================");
-  console.log("       YouTube Live Loop Streamer");
+  console.log("          YouTube Live Loop Streamer");
   console.log("====================================================");
-
   console.log(`Input       : ${RESOLVED_INPUT}`);
-  console.log(`Resolution  : ${WIDTH}x${HEIGHT}`);
-  console.log(`FPS         : ${FPS}`);
-  console.log(`Video       : ${VIDEO_BITRATE}`);
-  console.log(`Audio       : ${AUDIO_BITRATE}`);
+  console.log("Video       : H.264 COPY");
+  console.log("Audio       : AAC 128k Stereo");
   console.log("Loop        : Infinite");
+  console.log("Video Encode: DISABLED");
   console.log("Protocol    : RTMPS");
   console.log("Destination : YouTube Live");
   console.log("====================================================");
@@ -289,16 +203,11 @@ function startFfmpeg(): void {
   /**
    * FFmpeg stderr.
    *
-   * FFmpeg normally writes its progress/status
-   * information to stderr.
+   * FFmpeg normally writes progress information here.
    */
 
   ffmpeg.stderr?.on("data", (data: Buffer) => {
     const output = data.toString();
-
-    /**
-     * Progress lines normally contain "frame=".
-     */
 
     if (output.includes("frame=")) {
       process.stdout.write(
@@ -329,8 +238,8 @@ function startFfmpeg(): void {
   /**
    * FFmpeg exited.
    *
-   * If this wasn't an intentional shutdown,
-   * restart it automatically.
+   * Restart automatically unless this was an intentional
+   * shutdown.
    */
 
   ffmpeg.on("close", (code, signal) => {
@@ -339,7 +248,9 @@ function startFfmpeg(): void {
     console.log("");
 
     console.log(
-      `[FFmpeg] Process exited. code=${code ?? "null"} signal=${signal ?? "none"}`,
+      `[FFmpeg] Process exited. code=${
+        code ?? "null"
+      } signal=${signal ?? "none"}`,
     );
 
     if (stopping) {
@@ -355,7 +266,6 @@ function startFfmpeg(): void {
 
     restartTimer = setTimeout(() => {
       restartTimer = null;
-
       startFfmpeg();
     }, RESTART_DELAY_MS);
   });
