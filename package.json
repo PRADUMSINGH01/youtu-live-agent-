@@ -6,6 +6,7 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "nodemon --watch src --exec tsx src/index.ts",
+    "record": "tsx src/browser/init.ts",
     "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

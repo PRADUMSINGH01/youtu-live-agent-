@@ -2,9 +2,13 @@ import { launch, getStream, wss } from "puppeteer-stream";
 import * as fs from "fs";
 import * as path from "path";
 
-// Configuration for True 4K UHD 60FPS Recording
-const RESOLUTION = { width: 3840, height: 2160 }; // True 4K UHD (3840x2160)
-// Recording duration (default: 2 minutes / 120s for testing. Set RECORD_DURATION_SEC=0 for 24/7 continuous mode)
+// Configuration for Screen Recording
+const WIDTH = process.env.RECORD_WIDTH ? parseInt(process.env.RECORD_WIDTH) : 3840;
+const HEIGHT = process.env.RECORD_HEIGHT ? parseInt(process.env.RECORD_HEIGHT) : 2160;
+const DEVICE_SCALE_FACTOR = process.env.DEVICE_SCALE_FACTOR ? parseFloat(process.env.DEVICE_SCALE_FACTOR) : 1;
+const RESOLUTION = { width: WIDTH, height: HEIGHT };
+
+// Recording duration (default: 120s for testing. Set RECORD_DURATION_SEC=0 for 24/7 continuous mode)
 const RECORDING_DURATION_SEC = process.env.RECORD_DURATION_SEC !== undefined ? parseInt(process.env.RECORD_DURATION_SEC) : 120;
 const RECORDING_DURATION_MS = RECORDING_DURATION_SEC * 1000;
 const OUTPUT_FILE = process.env.OUTPUT_FILE || "recording_4k.webm";
@@ -14,8 +18,8 @@ const file = fs.createWriteStream(OUTPUT_FILE);
 async function test() {
 	console.log(
 		RECORDING_DURATION_SEC > 0
-			? `Starting True 4K (3840x2160 @ 60FPS) recording session for ${RECORDING_DURATION_SEC}s (${(RECORDING_DURATION_SEC / 60).toFixed(1)} mins)...`
-			: `Starting 24/7 Continuous 4K (3840x2160 @ 60FPS) Live Stream...`
+			? `Starting Complete Full-Screen Recording (${RESOLUTION.width}x${RESOLUTION.height} @ 60FPS, scale: ${DEVICE_SCALE_FACTOR}x) session for ${RECORDING_DURATION_SEC}s (${(RECORDING_DURATION_SEC / 60).toFixed(1)} mins)...`
+			: `Starting 24/7 Continuous Complete Full-Screen Recording (${RESOLUTION.width}x${RESOLUTION.height} @ 60FPS)...`
 	);
 
 	const browser = await launch({
@@ -24,11 +28,19 @@ async function test() {
 		defaultViewport: {
 			width: RESOLUTION.width,
 			height: RESOLUTION.height,
-			deviceScaleFactor: 2, // 2x Retina sharpness for crisp text & 3D geometry
+			deviceScaleFactor: DEVICE_SCALE_FACTOR,
 		},
 		args: [
 			`--window-size=${RESOLUTION.width},${RESOLUTION.height}`,
-			"--force-device-scale-factor=2",
+			"--window-position=0,0",
+			"--start-fullscreen",
+			"--kiosk",
+			`--force-device-scale-factor=${DEVICE_SCALE_FACTOR}`,
+			"--hide-scrollbars",
+			"--disable-infobars",
+			"--disable-notifications",
+			"--no-default-browser-check",
+			"--disable-features=Translate,OptimizationHints",
 			"--ignore-gpu-blocklist",
 			"--enable-gpu",
 			"--enable-webgl",
@@ -36,7 +48,6 @@ async function test() {
 			"--enable-zero-copy",
 			"--disable-dev-shm-usage",
 			"--no-sandbox",
-			"--hide-scrollbars",
 			"--enable-usermedia-screen-capturing",
 			"--allow-http-screen-capture",
 			"--allow-running-insecure-content",
@@ -45,11 +56,37 @@ async function test() {
 
 	const page = await browser.newPage();
 	
-	// Set page viewport explicitly to 4K UHD with 2x device scale factor
+	// Inject full-screen styles before page loads to ensure complete screen coverage without scrollbars or margins
+	await page.evaluateOnNewDocument(() => {
+		const injectFullScreenStyles = () => {
+			const style = document.createElement("style");
+			style.innerHTML = `
+				* {
+					box-sizing: border-box !important;
+				}
+				html, body {
+					margin: 0 !important;
+					padding: 0 !important;
+					width: 100vw !important;
+					height: 100vh !important;
+					overflow: hidden !important;
+				}
+				::-webkit-scrollbar {
+					display: none !important;
+					width: 0px !important;
+					height: 0px !important;
+				}
+			`;
+			document.head ? document.head.appendChild(style) : document.addEventListener("DOMContentLoaded", () => document.head.appendChild(style));
+		};
+		injectFullScreenStyles();
+	});
+
+	// Set page viewport explicitly to complete target resolution
 	await page.setViewport({
 		width: RESOLUTION.width,
 		height: RESOLUTION.height,
-		deviceScaleFactor: 2,
+		deviceScaleFactor: DEVICE_SCALE_FACTOR,
 	});
 
 	const targetUrl = process.env.TARGET_URL || "https://youtube-one-rust.vercel.app/dashboard/circle-flag-battler";
@@ -60,41 +97,64 @@ async function test() {
 		timeout: 60000,
 	});
 
-	// Get stream with True 4K UHD 60FPS settings (60 Mbps VP9 codec)
+	// Trigger full screen API on document if allowed
+	await page.evaluate(() => {
+		try {
+			if (document.documentElement.requestFullscreen) {
+				document.documentElement.requestFullscreen().catch(() => {});
+			}
+		} catch {}
+	});
+
+	// Get stream with complete screen 60FPS settings
 	const stream = await getStream(page, {
 		audio: true,
 		video: true,
-		frameSize: 60, // 60 FPS
+		frameSize: 60, // 60 FPS frame size
 		mimeType: "video/webm;codecs=vp9",
-		videoBitsPerSecond: 60_000_000, // 60 Mbps for ultra-crisp 4K video
+		videoBitsPerSecond: 60_000_000, // 60 Mbps for ultra-crisp video
 		audioBitsPerSecond: 256_000,   // 256 kbps studio audio
 		streamConfig: {
-			highWaterMarkMB: 2048, // 2GB buffer size for high-bitrate 4K stream
+			highWaterMarkMB: 2048, // 2GB buffer size for high-bitrate stream
 			immediateResume: true,
 		},
 	});
 
-	console.log("Recording started in 4K resolution (3840x2160)...");
+	console.log(`Complete screen recording started at ${RESOLUTION.width}x${RESOLUTION.height}...`);
+
+	stream.on("error", (err) => {
+		console.error("Stream error encountered:", err);
+	});
+	file.on("error", (err) => {
+		console.error("File write error encountered:", err);
+	});
+
 	stream.pipe(file);
 
-	// Graceful Cleanup Handler for Ctrl+C (SIGINT) / SIGTERM
+	// Graceful Cleanup Handler for Ctrl+C (SIGINT) / SIGTERM / Timer completion
 	let isCleaningUp = false;
 	const gracefulCleanup = async () => {
 		if (isCleaningUp) return;
 		isCleaningUp = true;
-		console.log("\nGracefully shutting down 4K recording session...");
+		console.log("\nGracefully shutting down screen recording session...");
 		try {
-			await stream.destroy();
-			file.end();
-			file.on("finish", async () => {
-				console.log(`Saved 4K recording to ${OUTPUT_FILE}`);
-				try { await browser.close(); } catch {}
-				try { (await wss).close(); } catch {}
-				process.exit(0);
-			});
+			// Call stream.stop() to let Chrome MediaRecorder flush final webm headers & tags
+			await stream.stop().catch(() => {});
 		} catch (err) {
-			process.exit(0);
+			console.error("Error stopping stream:", err);
 		}
+
+		file.end();
+		
+		await new Promise<void>((resolve) => {
+			file.on("finish", () => resolve());
+			setTimeout(resolve, 1000); // Fallback timeout
+		});
+
+		console.log(`Saved recording to ${OUTPUT_FILE}`);
+		try { await browser.close(); } catch {}
+		try { (await wss).close(); } catch {}
+		process.exit(0);
 	};
 
 	process.on("SIGINT", gracefulCleanup);
