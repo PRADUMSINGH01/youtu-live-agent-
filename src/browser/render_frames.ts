@@ -21,6 +21,7 @@ async function renderDeterministicVideo() {
 		"-r", `${FPS}`,
 		"-i", "-",
 		"-c:v", "libx264",
+		"-r", `${FPS}`,
 		"-preset", "fast",
 		"-crf", "18",
 		"-pix_fmt", "yuv420p",
@@ -54,7 +55,7 @@ async function renderDeterministicVideo() {
 	const page = await browser.newPage();
 	await page.setViewport({ width: WIDTH, height: HEIGHT });
 
-	const targetUrl = process.env.TARGET_URL || "https://youtube-one-rust.vercel.app/dashboard/circle-flag-battler";
+	const targetUrl = process.env.TARGET_URL || "http://localhost:3000/dashboard/circle-flag-battler";
 	console.log(`Navigating to ${targetUrl}...`);
 
 	await page.goto(targetUrl, { waitUntil: "networkidle0", timeout: 60000 });
