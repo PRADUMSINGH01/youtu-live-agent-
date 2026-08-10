@@ -34,5 +34,5 @@ COPY . .
 # Set environment variable to trigger Docker-specific logic in the code
 ENV DOCKER=true
 
-# Start the bot cleanly inside xvfb-run (shell form avoids CRLF issues)
-CMD xvfb-run -a --server-args="-screen 0 1920x1080x24" npx tsx src/browser/init.ts
+# Start 24/7 continuous live stream of pre-recorded video directly via FFmpeg
+CMD npx tsx src/browser/streamer.ts

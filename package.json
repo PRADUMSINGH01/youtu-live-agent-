@@ -4,10 +4,13 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "tsx src/index.ts",
+    "start": "tsx src/browser/streamer.ts",
     "dev": "nodemon --watch src --exec tsx src/index.ts",
     "record": "tsx src/browser/init.ts",
+    "record:loop": "tsx src/browser/recorder.ts",
     "render": "tsx src/browser/render_frames.ts",
+    "stream": "tsx src/browser/streamer.ts",
+    "stream:loop": "tsx src/browser/streamer.ts",
     "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
