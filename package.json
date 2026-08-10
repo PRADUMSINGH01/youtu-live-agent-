@@ -7,6 +7,7 @@
     "start": "tsx src/index.ts",
     "dev": "nodemon --watch src --exec tsx src/index.ts",
     "record": "tsx src/browser/init.ts",
+    "render": "tsx src/browser/render_frames.ts",
     "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -21,6 +22,7 @@
     "firebase-admin": "^14.2.0",
     "ioredis": "^6.0.0",
     "nodemon": "^3.1.14",
+    "puppeteer": "^24.3.0",
     "puppeteer-core": "^25.5.0",
     "puppeteer-stream": "^3.0.23",
     "zod": "^4.4.3"
