@@ -2,24 +2,24 @@ import { launch, getStream, wss } from "puppeteer-stream";
 import * as fs from "fs";
 import * as path from "path";
 
-// Configuration for Screen Recording
-const WIDTH = process.env.RECORD_WIDTH ? parseInt(process.env.RECORD_WIDTH) : 3840;
-const HEIGHT = process.env.RECORD_HEIGHT ? parseInt(process.env.RECORD_HEIGHT) : 2160;
+// Configuration for Screen Recording (Default: 1080p 60FPS for silky smooth playback; configurable via process.env)
+const WIDTH = process.env.RECORD_WIDTH ? parseInt(process.env.RECORD_WIDTH) : 1920;
+const HEIGHT = process.env.RECORD_HEIGHT ? parseInt(process.env.RECORD_HEIGHT) : 1080;
 const DEVICE_SCALE_FACTOR = process.env.DEVICE_SCALE_FACTOR ? parseFloat(process.env.DEVICE_SCALE_FACTOR) : 1;
 const RESOLUTION = { width: WIDTH, height: HEIGHT };
 
 // Recording duration (default: 120s for testing. Set RECORD_DURATION_SEC=0 for 24/7 continuous mode)
 const RECORDING_DURATION_SEC = process.env.RECORD_DURATION_SEC !== undefined ? parseInt(process.env.RECORD_DURATION_SEC) : 120;
 const RECORDING_DURATION_MS = RECORDING_DURATION_SEC * 1000;
-const OUTPUT_FILE = process.env.OUTPUT_FILE || "recording_4k.webm";
+const OUTPUT_FILE = process.env.OUTPUT_FILE || "recording_smooth.webm";
 
 const file = fs.createWriteStream(OUTPUT_FILE);
 
 async function test() {
 	console.log(
 		RECORDING_DURATION_SEC > 0
-			? `Starting Complete Full-Screen Recording (${RESOLUTION.width}x${RESOLUTION.height} @ 60FPS, scale: ${DEVICE_SCALE_FACTOR}x) session for ${RECORDING_DURATION_SEC}s (${(RECORDING_DURATION_SEC / 60).toFixed(1)} mins)...`
-			: `Starting 24/7 Continuous Complete Full-Screen Recording (${RESOLUTION.width}x${RESOLUTION.height} @ 60FPS)...`
+			? `Starting High-Performance Smooth Recording (${RESOLUTION.width}x${RESOLUTION.height} @ 60FPS, scale: ${DEVICE_SCALE_FACTOR}x) session for ${RECORDING_DURATION_SEC}s (${(RECORDING_DURATION_SEC / 60).toFixed(1)} mins)...`
+			: `Starting 24/7 Continuous Smooth Recording (${RESOLUTION.width}x${RESOLUTION.height} @ 60FPS)...`
 	);
 
 	const browser = await launch({
@@ -40,11 +40,16 @@ async function test() {
 			"--disable-infobars",
 			"--disable-notifications",
 			"--no-default-browser-check",
-			"--disable-features=Translate,OptimizationHints",
+			"--disable-features=Translate,OptimizationHints,MediaRouter",
 			"--ignore-gpu-blocklist",
 			"--enable-gpu",
 			"--enable-webgl",
 			"--enable-accelerated-2d-canvas",
+			"--enable-gpu-rasterization",
+			"--enable-native-gpu-memory-buffers",
+			"--use-gl=angle",
+			"--disable-frame-rate-limit",
+			"--disable-gpu-vsync",
 			"--enable-zero-copy",
 			"--disable-dev-shm-usage",
 			"--no-sandbox",
@@ -106,13 +111,13 @@ async function test() {
 		} catch {}
 	});
 
-	// Get stream with complete screen 60FPS settings
+	// Get stream with complete screen high-performance 60FPS settings
 	const stream = await getStream(page, {
 		audio: true,
 		video: true,
 		frameSize: 60, // 60 FPS frame size
-		mimeType: "video/webm;codecs=vp9",
-		videoBitsPerSecond: 60_000_000, // 60 Mbps for ultra-crisp video
+		mimeType: "video/webm;codecs=vp8", // VP8 encoding for lightweight ultra-fast 60FPS tab capture
+		videoBitsPerSecond: 25_000_000, // 25 Mbps for crystal-clear smooth 60FPS video
 		audioBitsPerSecond: 256_000,   // 256 kbps studio audio
 		streamConfig: {
 			highWaterMarkMB: 2048, // 2GB buffer size for high-bitrate stream
