@@ -79,6 +79,11 @@ function ensureLocalServer(): Promise<void> {
 async function startLiveStream() {
   if (isShuttingDown) return;
 
+  if (browserInstance) {
+    try { await browserInstance.close(); } catch (e) {}
+    browserInstance = null;
+  }
+
   await ensureLocalServer();
 
   console.log("\n========================================================");
@@ -240,9 +245,17 @@ async function startLiveStream() {
   browserStream.on("error", (err: any) => console.error("[Stream Error]", err));
   ffmpegProcess.on("error", (err: any) => console.error("[FFmpeg Error]", err));
 
-  ffmpegProcess.on("exit", (code: number, signal: string) => {
+  ffmpegProcess.on("exit", async (code: number, signal: string) => {
     if (isShuttingDown) return;
-    console.log(`[FFmpeg] Process exited with code ${code} (${signal}). Reconnecting in 5s...`);
+    console.log(`[FFmpeg] Process exited with code ${code} (${signal}). Cleaning up browser and reconnecting in 5s...`);
+    
+    // Explicitly destroy stream and close previous browser to prevent PID/process leaks
+    try { browserStream.destroy(); } catch (e) {}
+    if (browserInstance) {
+      try { await browserInstance.close(); } catch (e) {}
+      browserInstance = null;
+    }
+
     setTimeout(startLiveStream, 5000);
   });
 
