@@ -99,7 +99,7 @@ async function startLiveStream() {
     process.env.PUPPETEER_EXECUTABLE_PATH ||
     (fs.existsSync("/usr/bin/chromium") ? "/usr/bin/chromium" : undefined);
 
-  // Chrome flags optimized to eliminate software rasterizer CPU burn
+  // Chrome flags optimized for reliable headless video capture without blank screens
   const chromeArgs = [
     `--window-size=${WIDTH},${HEIGHT}`,
     "--window-position=0,0",
@@ -109,7 +109,7 @@ async function startLiveStream() {
     "--disable-infobars",
     "--disable-notifications",
     "--no-default-browser-check",
-    "--disable-features=Translate,OptimizationHints,MediaRouter",
+    "--disable-features=Translate,OptimizationHints,MediaRouter,CalculateNativeWinOcclusion",
     "--no-sandbox",
     "--disable-setuid-sandbox",
     "--disable-dev-shm-usage",
@@ -120,6 +120,8 @@ async function startLiveStream() {
     "--disable-background-timer-throttling",
     "--disable-backgrounding-occluded-windows",
     "--disable-renderer-backgrounding",
+    "--run-all-compositor-stages-before-draw",
+    "--enable-accelerated-2d-canvas",
   ];
 
   if (ENABLE_WEBGL) {
@@ -127,14 +129,7 @@ async function startLiveStream() {
       "--ignore-gpu-blocklist",
       "--enable-gpu",
       "--enable-webgl",
-      "--enable-accelerated-2d-canvas",
       "--enable-gpu-rasterization"
-    );
-  } else {
-    // Disable WebGL inside Chromium to prevent Mesa llvmpipe from spawning background JIT compiler threads
-    chromeArgs.push(
-      "--disable-gpu",
-      "--disable-software-rasterizer"
     );
   }
 
@@ -151,6 +146,51 @@ async function startLiveStream() {
   });
 
   const page = await browserInstance.newPage();
+
+  // Inject fullscreen layout and frame pump to ensure frames are continuously rendered
+  await page.evaluateOnNewDocument(() => {
+    const injectStyles = () => {
+      const style = document.createElement("style");
+      style.innerHTML = `
+        * { box-sizing: border-box !important; }
+        html, body {
+          margin: 0 !important;
+          padding: 0 !important;
+          width: 100vw !important;
+          height: 100vh !important;
+          overflow: hidden !important;
+        }
+        ::-webkit-scrollbar { display: none !important; }
+      `;
+      document.head ? document.head.appendChild(style) : document.addEventListener("DOMContentLoaded", () => document.head.appendChild(style));
+    };
+    injectStyles();
+
+    const startHeartbeat = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 2;
+      canvas.height = 2;
+      canvas.style.cssText = "position:fixed;bottom:0;right:0;width:2px;height:2px;opacity:0.01;pointer-events:none;z-index:999999;";
+      (document.body || document.documentElement).appendChild(canvas);
+      const ctx = canvas.getContext("2d");
+      let frame = 0;
+      const tick = () => {
+        frame = (frame + 1) % 100;
+        if (ctx) {
+          ctx.fillStyle = frame % 2 === 0 ? "rgba(255,255,255,0.01)" : "rgba(0,0,0,0.01)";
+          ctx.fillRect(0, 0, 2, 2);
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    };
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", startHeartbeat);
+    } else {
+      startHeartbeat();
+    }
+  });
+
   await page.setViewport({ width: WIDTH, height: HEIGHT });
 
   // Append stream query parameters so frontend tunes rendering frequency & shaders
@@ -194,7 +234,11 @@ async function startLiveStream() {
     mimeType: "video/webm;codecs=vp8",
     videoBitsPerSecond: parseInt(STREAM_BITRATE) * 1000,
     audioBitsPerSecond: 160_000,
-  });
+    streamConfig: {
+      highWaterMarkMB: 2048,
+      immediateResume: true,
+    },
+  } as any);
 
   const keyframeInterval = STREAM_FPS * 2; // Exact 2.0s GOP required for YouTube RTMP ingest
 
