@@ -201,6 +201,7 @@ async function startLiveStream() {
   const ffmpegArgs = [
     "-hide_banner",
     "-loglevel", "warning",
+    "-threads", "2",
     "-thread_queue_size", "2048",
     "-i", "pipe:0",
     "-c:v", VIDEO_CODEC,
