@@ -1,7 +1,10 @@
 node_modules
 dist
 .env
+.env.*
 .DS_Store
 *.webm
+*.mp4
 *.png
+recordings/
 npm-debug.log

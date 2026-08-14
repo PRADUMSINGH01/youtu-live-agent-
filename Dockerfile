@@ -1,18 +1,23 @@
-FROM node:20-slim
+FROM node:20-bookworm-slim
 
-# Install standard dependencies for Puppeteer, FFmpeg, and Xvfb on Debian
-RUN apt-get update && apt-get install -y \
+# Install FFmpeg, Chromium, dumb-init, Xvfb, fonts, and required graphic libraries
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     chromium \
+    dumb-init \
     xvfb \
     fonts-liberation \
+    fonts-noto-color-emoji \
+    fonts-dejavu-core \
+    fonts-freefont-ttf \
+    ca-certificates \
     libnss3 \
-    libasound2 \
-    libatk-bridge2.0-0 \
     libatk1.0-0 \
+    libatk-bridge2.0-0 \
     libcups2 \
     libdrm2 \
     libgbm1 \
+    libasound2 \
     libxcomposite1 \
     libxdamage1 \
     libxfixes3 \
@@ -24,15 +29,25 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy package files and install dependencies
-COPY package*.json ./
-RUN npm ci
+# Set Puppeteer & Node environment variables
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
+    NODE_ENV=production \
+    DOCKER=true
 
-# Copy the rest of the application
+# Copy package dependencies and install
+COPY package*.json ./
+RUN npm ci --omit=dev || npm install
+
+# Copy application source code
 COPY . .
 
-# Set environment variable to trigger Docker-specific logic in the code
-ENV DOCKER=true
+# Ensure recordings directory exists
+RUN mkdir -p /app/recordings
 
-# Start 24/7 continuous live stream of pre-recorded video directly via FFmpeg
-CMD npx tsx src/browser/streamer.ts
+EXPOSE 5000
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+
+# Default command: runs the 24/7 live stream broadcaster
+CMD ["npx", "tsx", "src/browser/streamer.ts"]

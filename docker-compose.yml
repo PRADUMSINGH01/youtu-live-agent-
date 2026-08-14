@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  # 24/7 Live Stream Broadcaster Service
+  youtube-streamer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: youtube-streamer
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - DOCKER=true
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    volumes:
+      - ./recordings:/app/recordings
+    command: ["npx", "tsx", "src/browser/streamer.ts"]
+
+  # Backend REST API Service for Dashboard (Port 5000)
+  youtube-agent-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: youtube-agent-api
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    environment:
+      - PORT=5000
+      - NODE_ENV=production
+      - DOCKER=true
+    volumes:
+      - ./recordings:/app/recordings
+    command: ["npx", "tsx", "src/index.ts"]

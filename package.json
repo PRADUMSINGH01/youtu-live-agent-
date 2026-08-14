@@ -11,6 +11,7 @@
     "render": "tsx src/browser/render_frames.ts",
     "stream": "tsx src/browser/streamer.ts",
     "stream:loop": "tsx src/browser/streamer.ts",
+    "upload": "tsx src/firebase/upload_file.ts",
     "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -20,19 +21,25 @@
   "type": "module",
   "dependencies": {
     "bullmq": "^6.0.9",
+    "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "firebase-admin": "^14.2.0",
     "ioredis": "^6.0.0",
+    "multer": "^2.2.0",
     "nodemon": "^3.1.14",
     "puppeteer": "^24.3.0",
     "puppeteer-core": "^25.5.0",
     "puppeteer-stream": "^3.0.23",
+    "uuid": "^14.0.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "@types/multer": "^2.2.0",
     "@types/node": "^26.2.0",
+    "@types/uuid": "^10.0.0",
     "tsx": "^4.23.11",
     "typescript": "^7.0.2"
   }
