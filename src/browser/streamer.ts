@@ -42,7 +42,7 @@ interface VideoSourceInfo {
  */
 async function resolveFirebaseVideoInput(): Promise<VideoSourceInfo | null> {
   try {
-    console.log("[Firebase] 🔍 Checking Firestore 'videos' collection for existing recordings...");
+    console.log("[Firebase] 🔍 Querying Firestore 'videos' collection for the latest cloud video...");
     const snapshot = await db
       .collection("videos")
       .orderBy("createdAt", "desc")
@@ -54,6 +54,8 @@ async function resolveFirebaseVideoInput(): Promise<VideoSourceInfo | null> {
       if (!doc) return null;
       const data = doc.data();
       const storagePath = data.storagePath;
+
+      console.log(`[Firebase] 📄 Found Firestore video record: "${data.title || data.fileName}" (Doc ID: ${doc.id})`);
 
       let freshSignedUrl: string = data.url;
 
@@ -69,8 +71,13 @@ async function resolveFirebaseVideoInput(): Promise<VideoSourceInfo | null> {
               expires: "03-01-2030",
             });
             freshSignedUrl = url;
+            console.log(`[Firebase] 🔗 Generated fresh signed URL for Storage path '${storagePath}'`);
+          } else {
+            console.warn(`[Firebase] Notice: Storage file '${storagePath}' not found in bucket '${bucket.name}'.`);
           }
-        } catch {}
+        } catch (storageErr: any) {
+          console.warn(`[Firebase] Storage signed URL notice: ${storageErr.message}`);
+        }
       }
 
       if (freshSignedUrl && (freshSignedUrl.startsWith("http://") || freshSignedUrl.startsWith("https://"))) {
@@ -81,9 +88,11 @@ async function resolveFirebaseVideoInput(): Promise<VideoSourceInfo | null> {
           sizeFormatted: data.sizeFormatted || `${((data.size || 0) / (1024 * 1024)).toFixed(1)} MB`,
         };
       }
+    } else {
+      console.log("[Firebase] ℹ️ No video records found in Firestore 'videos' collection.");
     }
   } catch (err: any) {
-    console.warn("[Firebase] Notice: Firestore check error:", err.message);
+    console.warn("[Firebase] Notice: Firestore query error:", err.message);
   }
   return null;
 }
@@ -126,10 +135,15 @@ function findLatestLocalRecordingFile(): VideoSourceInfo | null {
 
 /**
  * Resolve the stream input source.
- * If no recording is found anywhere, automatically record a 2-minute video first!
+ * Priority:
+ * 1. CLI argument (if passed explicitly)
+ * 2. Firebase Cloud Storage & Firestore (TOP PRIORITY)
+ * 3. Local recordings/ directory
+ * 4. .env fallback
+ * 5. Auto-Bootstrap 2-minute recording
  */
 async function resolveStreamInputSource(): Promise<VideoSourceInfo> {
-  // 1. Explicit CLI argument
+  // 1. Explicit CLI argument (if passed directly in terminal)
   const cliArg = process.argv[2];
   if (cliArg) {
     const isUrl = cliArg.startsWith("http://") || cliArg.startsWith("https://");
@@ -140,7 +154,21 @@ async function resolveStreamInputSource(): Promise<VideoSourceInfo> {
     };
   }
 
-  // 2. Explicit INPUT_FILE from .env if present and valid
+  // 2. Query Firestore & Firebase Storage FIRST
+  const firebaseAsset = await resolveFirebaseVideoInput();
+  if (firebaseAsset) {
+    console.log(`[Streamer] ☁️ Selected Firebase Cloud Asset: "${firebaseAsset.displayName}"`);
+    return firebaseAsset;
+  }
+
+  // 3. Fallback: Local recordings/ directory
+  const localRecording = findLatestLocalRecordingFile();
+  if (localRecording) {
+    console.log(`[Streamer] 📁 Selected Local Recording File: "${localRecording.displayName}"`);
+    return localRecording;
+  }
+
+  // 4. Fallback: INPUT_FILE from .env if present and valid
   if (process.env.INPUT_FILE) {
     const resolvedEnv = path.isAbsolute(process.env.INPUT_FILE)
       ? process.env.INPUT_FILE
@@ -156,20 +184,6 @@ async function resolveStreamInputSource(): Promise<VideoSourceInfo> {
         sizeFormatted: `${(stats.size / (1024 * 1024)).toFixed(1)} MB`,
       };
     }
-  }
-
-  // 3. Query Firestore & Firebase Storage
-  const firebaseAsset = await resolveFirebaseVideoInput();
-  if (firebaseAsset) {
-    console.log(`[Streamer] ✅ Selected Firebase Cloud Video: "${firebaseAsset.displayName}"`);
-    return firebaseAsset;
-  }
-
-  // 4. Check local recordings/ directory
-  const localRecording = findLatestLocalRecordingFile();
-  if (localRecording) {
-    console.log(`[Streamer] 📁 Selected Local Recording File: "${localRecording.displayName}"`);
-    return localRecording;
   }
 
   // 5. Auto-Bootstrap: No recording found! Record a 2-minute video first!
