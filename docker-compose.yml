@@ -1,7 +1,7 @@
 version: "3.8"
 
 services:
-  # Primary 24/7 Live Stream Broadcaster Service (1080p 60FPS to YouTube RTMP)
+  # Primary 24/7 Live Stream Broadcaster Service (Optimized YouTube RTMP Engine)
   youtube-streamer:
     build:
       context: .
@@ -18,9 +18,15 @@ services:
       - DOCKER=true
       - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
       - PORT=5000
+      - STREAM_WIDTH=1280
+      - STREAM_HEIGHT=720
+      - STREAM_FPS=30
+      - STREAM_BITRATE=2500k
+      - ENABLE_WEBGL=false
+      - VIDEO_CODEC=libx264
     volumes:
       - ./recordings:/app/recordings
-    command: ["npx", "tsx", "src/browser/live_stream.ts"]
+    command: ["node", "dist/browser/live_stream.js"]
 
   # Optional Background Cloud Video Recorder (5-Min Auto-Chunks to Firebase Storage)
   youtube-recorder:
@@ -38,6 +44,6 @@ services:
       - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
     volumes:
       - ./recordings:/app/recordings
-    command: ["npx", "tsx", "src/browser/init.ts"]
+    command: ["node", "dist/browser/init.js"]
     profiles:
       - recorder

@@ -39,6 +39,13 @@ class FlagBattleApp {
     this.lastFpsUpdate = performance.now();
     this.isCleanMode = false;
 
+    // Detect stream / headless mode and target framerate
+    const urlParams = typeof window !== 'undefined' && window.location ? new URLSearchParams(window.location.search) : null;
+    const parsedFps = urlParams ? parseInt(urlParams.get('fps') || '0', 10) : 0;
+    this.targetFps = parsedFps > 0 ? parsedFps : 60;
+    this.isStreamMode = urlParams ? (urlParams.get('stream') === '1' || urlParams.get('stream') === 'true') : false;
+    this.minFrameInterval = this.targetFps > 0 ? 1000 / this.targetFps : 16.666;
+
     this.init();
   }
 
@@ -228,7 +235,15 @@ class FlagBattleApp {
   }
 
   loop(currentTime) {
-    const dt = Math.min(2.0, (currentTime - this.lastFrameTime) / 16.666);
+    const elapsed = currentTime - this.lastFrameTime;
+
+    // Framerate pacing for stream mode
+    if (this.targetFps < 60 && elapsed < (this.minFrameInterval - 2)) {
+      requestAnimationFrame((t) => this.loop(t));
+      return;
+    }
+
+    const dt = Math.min(2.0, elapsed / 16.666);
     this.lastFrameTime = currentTime;
 
     // Real-time FPS Calculation
@@ -254,7 +269,7 @@ class FlagBattleApp {
     // Update Physics
     this.physics.update(dt);
 
-    // Render WebGL Background Shader
+    // Render WebGL or 2D Background Shader
     if (this.webgl) {
       this.webgl.render({ x: this.physics.cx, y: this.physics.cy }, this.physics.arenaRadius);
     }
@@ -262,8 +277,9 @@ class FlagBattleApp {
     // Render 2D Composite Layer
     this.render2D();
 
-    // Update UI telemetry and Leaderboard
-    if (this.frameCount % 5 === 0 && this.ui) {
+    // Update UI telemetry and Leaderboard (throttled to save CPU)
+    const uiThrottle = this.isStreamMode ? 10 : 5;
+    if (this.frameCount % uiThrottle === 0 && this.ui) {
       this.ui.updateTelemetry(this.physics);
       this.ui.updateLeaderboard(this.physics);
     }

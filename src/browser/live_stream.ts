@@ -19,14 +19,25 @@ const RTMP_BASE_URL = (process.env.RTMP_URL || "rtmp://a.rtmp.youtube.com/live2"
   .replace(/\/+$/, "");
 const STREAM_URL = `${RTMP_BASE_URL}/${STREAM_KEY}`;
 
-const PORT = parseInt(process.env.PORT || "5000");
-const WIDTH = process.env.RECORD_WIDTH ? parseInt(process.env.RECORD_WIDTH) : 1920;
-const HEIGHT = process.env.RECORD_HEIGHT ? parseInt(process.env.RECORD_HEIGHT) : 1080;
+const PORT = parseInt(process.env.PORT || "5000", 10);
+const WIDTH = parseInt(process.env.STREAM_WIDTH || process.env.RECORD_WIDTH || "1280", 10);
+const HEIGHT = parseInt(process.env.STREAM_HEIGHT || process.env.RECORD_HEIGHT || "720", 10);
+const STREAM_FPS = parseInt(process.env.STREAM_FPS || "30", 10);
+const ENABLE_WEBGL = process.env.ENABLE_WEBGL === "true";
+const VIDEO_CODEC = process.env.VIDEO_CODEC || (process.env.USE_HARDWARE_ACCEL === "nvenc" ? "h264_nvenc" : "libx264");
+
+// Dynamic Bitrate based on resolution & FPS if not specified
+const defaultBitrate = WIDTH >= 1920 ? (STREAM_FPS >= 60 ? "6000k" : "4500k") : (STREAM_FPS >= 60 ? "4000k" : "2500k");
+const STREAM_BITRATE = process.env.STREAM_BITRATE || defaultBitrate;
+const STREAM_MAXRATE = process.env.STREAM_MAXRATE || `${parseInt(STREAM_BITRATE) * 1.15}k`;
+const STREAM_BUFSIZE = process.env.STREAM_BUFSIZE || `${parseInt(STREAM_BITRATE) * 2}k`;
+
 let TARGET_URL = process.env.TARGET_URL || `http://localhost:${PORT}`;
 
 let ffmpegProcess: ChildProcess | null = null;
 let browserInstance: any = null;
 let serverInstance: any = null;
+let isShuttingDown = false;
 
 // Start embedded web server for frontend if local URL
 function ensureLocalServer(): Promise<void> {
@@ -37,7 +48,15 @@ function ensureLocalServer(): Promise<void> {
     if (fs.existsSync(frontendDir)) {
       app.use(express.static(frontendDir));
       app.get("/api/health", (_req, res) => {
-        res.json({ status: "streaming", live: true, timestamp: new Date().toISOString() });
+        res.json({
+          status: "streaming",
+          live: true,
+          resolution: `${WIDTH}x${HEIGHT}`,
+          fps: STREAM_FPS,
+          codec: VIDEO_CODEC,
+          webgl: ENABLE_WEBGL,
+          timestamp: new Date().toISOString()
+        });
       });
 
       serverInstance = app.listen(PORT, "0.0.0.0", () => {
@@ -58,19 +77,61 @@ function ensureLocalServer(): Promise<void> {
 }
 
 async function startLiveStream() {
+  if (isShuttingDown) return;
+
   await ensureLocalServer();
 
   console.log("\n========================================================");
-  console.log("🔴 24/7 DOCKER LIVE STREAM ENGINE ACTIVE");
+  console.log("🔴 HIGH-PERFORMANCE 24/7 LIVE STREAM ENGINE ACTIVE");
   console.log("========================================================");
-  console.log(`📡 Ingest Server : ${RTMP_BASE_URL}`);
-  console.log(`🌐 Target Web Page: ${TARGET_URL}`);
-  console.log(`🎥 Resolution    : ${WIDTH}x${HEIGHT} @ 60 FPS (1080p60)`);
+  console.log(`📡 Ingest Server  : ${RTMP_BASE_URL}`);
+  console.log(`🎥 Resolution     : ${WIDTH}x${HEIGHT} @ ${STREAM_FPS} FPS`);
+  console.log(`⚙️ Video Codec    : ${VIDEO_CODEC} (Bitrate: ${STREAM_BITRATE})`);
+  console.log(`🎨 WebGL / Shaders: ${ENABLE_WEBGL ? "ENABLED (Hardware GPU)" : "DISABLED (Ultra-Fast 2D Canvas Fallback)"}`);
   console.log("========================================================\n");
 
   const executablePath =
     process.env.PUPPETEER_EXECUTABLE_PATH ||
     (fs.existsSync("/usr/bin/chromium") ? "/usr/bin/chromium" : undefined);
+
+  // Chrome flags optimized to eliminate software rasterizer CPU burn
+  const chromeArgs = [
+    `--window-size=${WIDTH},${HEIGHT}`,
+    "--window-position=0,0",
+    "--start-fullscreen",
+    "--kiosk",
+    "--hide-scrollbars",
+    "--disable-infobars",
+    "--disable-notifications",
+    "--no-default-browser-check",
+    "--disable-features=Translate,OptimizationHints,MediaRouter",
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--enable-usermedia-screen-capturing",
+    "--allow-http-screen-capture",
+    "--allow-running-insecure-content",
+    "--autoplay-policy=no-user-gesture-required",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+  ];
+
+  if (ENABLE_WEBGL) {
+    chromeArgs.push(
+      "--ignore-gpu-blocklist",
+      "--enable-gpu",
+      "--enable-webgl",
+      "--enable-accelerated-2d-canvas",
+      "--enable-gpu-rasterization"
+    );
+  } else {
+    // Disable WebGL inside Chromium to prevent Mesa llvmpipe from spawning background JIT compiler threads
+    chromeArgs.push(
+      "--disable-gpu",
+      "--disable-software-rasterizer"
+    );
+  }
 
   browserInstance = await launch({
     channel: executablePath ? undefined : "chrome",
@@ -81,37 +142,23 @@ async function startLiveStream() {
       height: HEIGHT,
       deviceScaleFactor: 1,
     },
-    args: [
-      `--window-size=${WIDTH},${HEIGHT}`,
-      "--window-position=0,0",
-      "--start-fullscreen",
-      "--kiosk",
-      "--hide-scrollbars",
-      "--disable-infobars",
-      "--disable-notifications",
-      "--no-default-browser-check",
-      "--disable-features=Translate,OptimizationHints,MediaRouter",
-      "--ignore-gpu-blocklist",
-      "--enable-gpu",
-      "--enable-webgl",
-      "--enable-accelerated-2d-canvas",
-      "--enable-gpu-rasterization",
-      "--use-gl=angle",
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--enable-usermedia-screen-capturing",
-      "--allow-http-screen-capture",
-      "--allow-running-insecure-content",
-      "--autoplay-policy=no-user-gesture-required",
-    ],
+    args: chromeArgs,
   });
 
   const page = await browserInstance.newPage();
   await page.setViewport({ width: WIDTH, height: HEIGHT });
 
-  console.log(`[Browser] Loading ${TARGET_URL}...`);
-  await page.goto(TARGET_URL, { waitUntil: "domcontentloaded", timeout: 60000 }).catch((e: any) => {
+  // Append stream query parameters so frontend tunes rendering frequency & shaders
+  const urlObj = new URL(TARGET_URL);
+  urlObj.searchParams.set("stream", "1");
+  urlObj.searchParams.set("fps", String(STREAM_FPS));
+  if (!ENABLE_WEBGL) {
+    urlObj.searchParams.set("nowebgl", "1");
+  }
+  const streamPageUrl = urlObj.toString();
+
+  console.log(`[Browser] Loading ${streamPageUrl}...`);
+  await page.goto(streamPageUrl, { waitUntil: "domcontentloaded", timeout: 60000 }).catch((e: any) => {
     console.warn(`[Browser] Navigation notice: ${e.message}`);
   });
 
@@ -124,53 +171,68 @@ async function startLiveStream() {
     } catch (e) {}
   });
 
-  console.log(`[Browser] Hooking 1080p 60FPS Video & Audio capture stream...`);
+  console.log(`[Browser] Hooking ${WIDTH}x${HEIGHT} @ ${STREAM_FPS} FPS Video & Audio capture stream...`);
   const browserStream = await getStream(page, {
     audio: true,
     video: true,
-    frameSize: 60,
+    frameSize: STREAM_FPS,
     videoConstraints: {
       mandatory: {
-        minWidth: 1920,
-        minHeight: 1080,
-        maxWidth: 1920,
-        maxHeight: 1080,
-        minFrameRate: 60,
-        maxFrameRate: 60,
+        minWidth: WIDTH,
+        minHeight: HEIGHT,
+        maxWidth: WIDTH,
+        maxHeight: HEIGHT,
+        minFrameRate: STREAM_FPS,
+        maxFrameRate: STREAM_FPS,
       } as any,
     },
     mimeType: "video/webm;codecs=vp8",
-    videoBitsPerSecond: 10_000_000,
+    videoBitsPerSecond: parseInt(STREAM_BITRATE) * 1000 * 1.5,
     audioBitsPerSecond: 192_000,
   });
 
-  console.log(`[FFmpeg] Spawning 1080p60 RTMP ingest stream to YouTube Live...`);
+  const keyframeInterval = STREAM_FPS * 2; // Exact 2.0s GOP required for YouTube RTMP ingest
+
   const ffmpegArgs = [
     "-hide_banner",
     "-loglevel", "warning",
     "-thread_queue_size", "2048",
     "-i", "pipe:0",
-    "-vf", "scale=1920:1080:flags=bicubic,fps=60,format=yuv420p",
-    "-c:v", "libx264",
-    "-preset", "ultrafast",
-    "-tune", "zerolatency",
-    "-profile:v", "high",
-    "-level", "4.2",
-    "-b:v", "5500k",
-    "-maxrate", "6000k",
-    "-bufsize", "10000k",
-    "-pix_fmt", "yuv420p",
-    "-g", "120", // 2-second keyframes at 60 FPS
-    "-keyint_min", "120",
+    "-c:v", VIDEO_CODEC,
+  ];
+
+  if (VIDEO_CODEC === "libx264") {
+    ffmpegArgs.push(
+      "-preset", "ultrafast",
+      "-tune", "zerolatency",
+      "-profile:v", "high",
+      "-level", "4.2",
+      "-pix_fmt", "yuv420p"
+    );
+  } else if (VIDEO_CODEC === "h264_nvenc") {
+    ffmpegArgs.push(
+      "-preset", "p1", // Lowest latency / high throughput
+      "-tune", "ull",
+      "-pix_fmt", "yuv420p"
+    );
+  }
+
+  ffmpegArgs.push(
+    "-b:v", STREAM_BITRATE,
+    "-maxrate", STREAM_MAXRATE,
+    "-bufsize", STREAM_BUFSIZE,
+    "-g", String(keyframeInterval),
+    "-keyint_min", String(keyframeInterval),
     "-sc_threshold", "0",
     "-c:a", "aac",
     "-b:a", "160k",
     "-ar", "44100",
     "-flvflags", "no_duration_filesize",
     "-f", "flv",
-    STREAM_URL,
-  ];
+    STREAM_URL
+  );
 
+  console.log(`[FFmpeg] Spawning ${VIDEO_CODEC} RTMP ingest stream to YouTube Live...`);
   ffmpegProcess = spawn("ffmpeg", ffmpegArgs, { stdio: ["pipe", "inherit", "inherit"] });
 
   browserStream.pipe(ffmpegProcess.stdin!);
@@ -179,20 +241,32 @@ async function startLiveStream() {
   ffmpegProcess.on("error", (err: any) => console.error("[FFmpeg Error]", err));
 
   ffmpegProcess.on("exit", (code: number, signal: string) => {
+    if (isShuttingDown) return;
     console.log(`[FFmpeg] Process exited with code ${code} (${signal}). Reconnecting in 5s...`);
     setTimeout(startLiveStream, 5000);
   });
 
-  console.log("\n✅ LIVE BROADCAST ACTIVE! 24/7 Stream running on YouTube!\n");
+  console.log(`\n✅ LIVE BROADCAST ACTIVE! 24/7 Stream running on YouTube at ${WIDTH}x${HEIGHT} @ ${STREAM_FPS} FPS!\n`);
 }
 
-process.on("SIGINT", async () => {
+async function shutdown() {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
   console.log("\n[Live Stream] Gracefully stopping broadcast...");
-  if (ffmpegProcess) ffmpegProcess.kill("SIGTERM");
-  if (browserInstance) await browserInstance.close().catch(() => {});
-  if (serverInstance) serverInstance.close();
+  if (ffmpegProcess) {
+    try { ffmpegProcess.kill("SIGTERM"); } catch (e) {}
+  }
+  if (browserInstance) {
+    try { await browserInstance.close(); } catch (e) {}
+  }
+  if (serverInstance) {
+    try { serverInstance.close(); } catch (e) {}
+  }
   process.exit(0);
-});
+}
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
 
 startLiveStream().catch((err) => {
   console.error("Fatal Live Stream Error:", err);

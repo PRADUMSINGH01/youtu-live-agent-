@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "tsx src/browser/live_stream.ts",
+    "start:prod": "node dist/browser/live_stream.js",
     "live:stream": "tsx src/browser/live_stream.ts",
     "docker:up": "docker compose up -d --build",
     "docker:logs": "docker compose logs -f youtube-streamer",

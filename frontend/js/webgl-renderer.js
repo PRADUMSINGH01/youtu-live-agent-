@@ -1,8 +1,34 @@
-// WebGL 2D/3D Shader Pipeline for Cyberpunk Arena Background & Visual FX
+// WebGL 2D/3D Shader Pipeline & High-Performance 2D Fallback for Arena Background
 export class WebGLArenaRenderer {
   constructor(canvas) {
     this.canvas = canvas;
-    this.gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    this.use2DFallback = false;
+    this.gl = null;
+    this.ctx2d = null;
+
+    // Check query params for forced 2D / stream mode
+    const urlParams = typeof window !== 'undefined' && window.location ? new URLSearchParams(window.location.search) : null;
+    const force2D = urlParams ? (urlParams.get('nowebgl') === '1' || urlParams.get('nowebgl') === 'true' || urlParams.get('stream') === '1') : false;
+
+    if (!force2D) {
+      this.gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+      
+      // Detect software rasterizers (llvmpipe, SwiftShader) to avoid 100%+ CPU consumption
+      if (this.gl) {
+        const debugInfo = this.gl.getExtension('WEBGL_debug_renderer_info');
+        if (debugInfo) {
+          const renderer = this.gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || '';
+          if (/llvmpipe|swiftshader|software/i.test(renderer)) {
+            console.warn(`[WebGL] Software rasterizer detected (${renderer}). Falling back to optimized 2D canvas.`);
+            this.gl = null;
+            this.use2DFallback = true;
+          }
+        }
+      }
+    } else {
+      this.use2DFallback = true;
+    }
+
     this.program = null;
     this.positionBuffer = null;
     this.uniforms = {};
@@ -14,7 +40,9 @@ export class WebGLArenaRenderer {
     if (this.gl) {
       this.initShaders();
     } else {
-      console.warn("WebGL not supported, falling back to 2D canvas effects.");
+      this.use2DFallback = true;
+      this.ctx2d = canvas.getContext('2d', { alpha: false, desynchronized: true });
+      console.log("[ArenaRenderer] 🚀 Running in Ultra-Fast 2D Canvas Background Mode (Zero GPU/llvmpipe penalty).");
     }
   }
 
@@ -204,6 +232,11 @@ export class WebGLArenaRenderer {
   }
 
   render(arenaCenter = { x: 640, y: 360 }, arenaRadius = 330) {
+    if (this.use2DFallback && this.ctx2d) {
+      this.render2DFallback(arenaCenter, arenaRadius);
+      return;
+    }
+
     const gl = this.gl;
     if (!gl || !this.program) return;
 
@@ -250,5 +283,62 @@ export class WebGLArenaRenderer {
     gl.vertexAttribPointer(posAttr, 2, gl.FLOAT, false, 0, 0);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
+  }
+
+  render2DFallback(arenaCenter, arenaRadius) {
+    const ctx = this.ctx2d;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const time = (performance.now() - this.startTime) * 0.001;
+
+    // 1. Dark Futuristic Arena Gradient
+    const bgGrad = ctx.createRadialGradient(
+      arenaCenter.x, arenaCenter.y, arenaRadius * 0.1,
+      arenaCenter.x, arenaCenter.y, Math.max(w, h) * 0.75
+    );
+
+    if (this.theme === 'magma') {
+      bgGrad.addColorStop(0, '#1c0707');
+      bgGrad.addColorStop(0.5, '#0d0202');
+      bgGrad.addColorStop(1, '#050000');
+    } else if (this.theme === 'deepspace') {
+      bgGrad.addColorStop(0, '#0c0721');
+      bgGrad.addColorStop(0.5, '#050212');
+      bgGrad.addColorStop(1, '#020108');
+    } else {
+      // Cyberpunk default
+      bgGrad.addColorStop(0, '#0a162b');
+      bgGrad.addColorStop(0.5, '#050b17');
+      bgGrad.addColorStop(1, '#020409');
+    }
+
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, w, h);
+
+    // 2. Subtle Rotating Radar Line inside Arena
+    ctx.save();
+    ctx.translate(arenaCenter.x, arenaCenter.y);
+    const scanAngle = (time * 0.75) % (Math.PI * 2);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, arenaRadius, scanAngle - 0.25, scanAngle);
+    ctx.closePath();
+    ctx.fillStyle = this.theme === 'magma' ? 'rgba(255, 60, 0, 0.05)' : 'rgba(0, 229, 255, 0.04)';
+    ctx.fill();
+
+    // 3. Inner Arena Glow Rings
+    ctx.beginPath();
+    ctx.arc(0, 0, arenaRadius * 0.65, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(0, 0, arenaRadius * 0.35, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.restore();
   }
 }

@@ -37,10 +37,13 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
 
 # Copy package dependencies and install
 COPY package*.json ./
-RUN npm ci --omit=dev || npm install
+RUN npm install
 
 # Copy application source code
 COPY . .
+
+# Build TypeScript source into dist/
+RUN npm run build
 
 # Ensure recordings directory exists
 RUN mkdir -p /app/recordings
@@ -49,5 +52,5 @@ EXPOSE 5000
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
-# Default command: runs the 24/7 live stream broadcaster
-CMD ["npx", "tsx", "src/browser/live_stream.ts"]
+# Default command: runs the 24/7 live stream broadcaster with zero tsx runtime overhead
+CMD ["node", "dist/browser/live_stream.js"]
