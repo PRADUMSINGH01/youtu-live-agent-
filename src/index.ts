@@ -5,10 +5,14 @@ import streamRouter from './route/stream-mang/upload-video.route.js';
 import addStreamRouter from './route/stream-mang/add-streeam.route.js';
 import { streamworker, emailworker } from './queues/workers.js';
 import { db } from './firebase/init.js';
+import path from 'path';
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 5000;
+
+// Serve static frontend files
+app.use(express.static(path.resolve(process.cwd(), 'frontend')));
 
 // Middleware
 app.use(cors({

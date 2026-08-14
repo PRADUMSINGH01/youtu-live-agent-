@@ -50,4 +50,4 @@ EXPOSE 5000
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 # Default command: runs the 24/7 live stream broadcaster
-CMD ["npx", "tsx", "src/browser/streamer.ts"]
+CMD ["npx", "tsx", "src/browser/live_stream.ts"]

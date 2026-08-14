@@ -69,7 +69,7 @@ export async function startContinuousRecorder() {
 		deviceScaleFactor: DEVICE_SCALE_FACTOR,
 	});
 
-	const targetUrl = process.env.TARGET_URL || "http://localhost:3000/dashboard/circle-flag-battler";
+	const targetUrl = process.env.TARGET_URL || "http://localhost:5000";
 	console.log(`Navigating to target URL: ${targetUrl}...`);
 
 	await page.goto(targetUrl, {

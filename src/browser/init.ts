@@ -98,7 +98,7 @@ function getBrowserLaunchOptions(): any {
 export async function recordSingleVideo(durationSeconds: number = 120): Promise<string> {
 	const outputFilePath = path.join(RECORDINGS_DIR, `recording_${Date.now()}_bootstrap.webm`);
 	const file = fs.createWriteStream(outputFilePath);
-	const targetUrl = process.env.TARGET_URL || "https://crypto-ruddy-eta.vercel.app/";
+	const targetUrl = process.env.TARGET_URL || "http://localhost:5000";
 
 	console.log("\n====================================================");
 	console.log(`🎬 Recording ${durationSeconds / 60} Minute Video (${durationSeconds}s) for Live Stream`);
@@ -340,7 +340,7 @@ export async function runRotatingBrowserRecorder() {
 		isMobile: false,
 	});
 
-	const targetUrl = process.env.TARGET_URL || "https://crypto-ruddy-eta.vercel.app/";
+	const targetUrl = process.env.TARGET_URL || "http://localhost:5000";
 	console.log(`[Browser] Navigating to ${targetUrl}...`);
 
 	await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});

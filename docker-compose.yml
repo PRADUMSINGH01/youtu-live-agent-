@@ -1,13 +1,35 @@
 version: "3.8"
 
 services:
-  # 24/7 Live Stream Broadcaster Service
+  # Primary 24/7 Live Stream Broadcaster Service (1080p 60FPS to YouTube RTMP)
   youtube-streamer:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: youtube-streamer
     restart: unless-stopped
+    shm_size: "2gb"
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - DOCKER=true
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+      - PORT=5000
+    volumes:
+      - ./recordings:/app/recordings
+    command: ["npx", "tsx", "src/browser/live_stream.ts"]
+
+  # Optional Background Cloud Video Recorder (5-Min Auto-Chunks to Firebase Storage)
+  youtube-recorder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: youtube-recorder
+    restart: unless-stopped
+    shm_size: "2gb"
     env_file:
       - .env
     environment:
@@ -16,23 +38,6 @@ services:
       - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
     volumes:
       - ./recordings:/app/recordings
-    command: ["npx", "tsx", "src/browser/streamer.ts"]
-
-  # Backend REST API Service for Dashboard (Port 5000)
-  youtube-agent-api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: youtube-agent-api
-    restart: unless-stopped
-    ports:
-      - "5000:5000"
-    env_file:
-      - .env
-    environment:
-      - PORT=5000
-      - NODE_ENV=production
-      - DOCKER=true
-    volumes:
-      - ./recordings:/app/recordings
-    command: ["npx", "tsx", "src/index.ts"]
+    command: ["npx", "tsx", "src/browser/init.ts"]
+    profiles:
+      - recorder

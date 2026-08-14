@@ -17,7 +17,12 @@ class FirebaseService {
     const projectId = process.env.FIREBASE_PROJECT_ID || "nomeet-b84a6";
     const clientEmail = process.env.FIREBASE_CLIENT_EMAIL || "firebase-adminsdk-fbsvc@nomeet-b84a6.iam.gserviceaccount.com";
     const rawPrivateKey = process.env.FIREBASE_PRIVATE_KEY;
-    const privateKey = rawPrivateKey ? rawPrivateKey.replace(/\\n/g, "\n") : undefined;
+    const privateKey = rawPrivateKey
+      ? rawPrivateKey
+          .trim()
+          .replace(/^["']|["']$/g, "")
+          .replace(/\\n/g, "\n")
+      : undefined;
     const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || "nomeet-b84a6";
 
     const existingApps = getApps();
