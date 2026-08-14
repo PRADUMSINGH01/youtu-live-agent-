@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # Primary 24/7 Live Stream Broadcaster Service (Optimized YouTube RTMP Engine)
   youtube-streamer:
