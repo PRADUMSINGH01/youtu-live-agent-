@@ -292,14 +292,18 @@ function buildFfmpegArgs(inputSource: string, probe: MediaProbeInfo): string[] {
     args.push(
       "-vf", "fps=30,setpts=N/(30*TB)",
       "-c:v", "libx264",
-      "-preset", "ultrafast",
+      "-preset", "veryfast",
       "-tune", "zerolatency",
+      "-profile:v", "main",
       "-pix_fmt", "yuv420p",
       "-g", "60",
+      "-keyint_min", "60",
+      "-sc_threshold", "0",
       "-b:v", "4500k",
       "-minrate", "4000k",
       "-maxrate", "5000k",
-      "-bufsize", "9000k"
+      "-bufsize", "9000k",
+      "-flags", "+global_header"
     );
   }
 
@@ -321,6 +325,7 @@ function buildFfmpegArgs(inputSource: string, probe: MediaProbeInfo): string[] {
 
   // Output container and FLV streaming flags
   args.push(
+    "-max_muxing_queue_size", "1024",
     "-flvflags", "no_duration_filesize",
     "-f", "flv",
     STREAM_URL
