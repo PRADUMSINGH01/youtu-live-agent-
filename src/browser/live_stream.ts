@@ -192,8 +192,8 @@ async function startLiveStream() {
       } as any,
     },
     mimeType: "video/webm;codecs=vp8",
-    videoBitsPerSecond: parseInt(STREAM_BITRATE) * 1000 * 1.5,
-    audioBitsPerSecond: 192_000,
+    videoBitsPerSecond: parseInt(STREAM_BITRATE) * 1000,
+    audioBitsPerSecond: 160_000,
   });
 
   const keyframeInterval = STREAM_FPS * 2; // Exact 2.0s GOP required for YouTube RTMP ingest
@@ -202,7 +202,8 @@ async function startLiveStream() {
     "-hide_banner",
     "-loglevel", "warning",
     "-threads", "2",
-    "-thread_queue_size", "2048",
+    "-thread_queue_size", "4096",
+    "-r", String(STREAM_FPS),
     "-i", "pipe:0",
     "-c:v", VIDEO_CODEC,
   ];
@@ -211,8 +212,7 @@ async function startLiveStream() {
     ffmpegArgs.push(
       "-preset", "ultrafast",
       "-tune", "zerolatency",
-      "-profile:v", "high",
-      "-level", "4.2",
+      "-profile:v", "main",
       "-pix_fmt", "yuv420p"
     );
   } else if (VIDEO_CODEC === "h264_nvenc") {

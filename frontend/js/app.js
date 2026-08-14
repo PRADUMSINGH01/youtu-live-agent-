@@ -23,6 +23,9 @@ class FlagBattleApp {
 
     this.sound = new SoundEngine();
     this.webgl = this.glCanvas ? new WebGLArenaRenderer(this.glCanvas) : null;
+    if (this.glCanvas && this.webgl && this.webgl.use2DFallback) {
+      this.glCanvas.style.display = 'none';
+    }
     this.recorder = new CanvasRecorder(this.canvas, this.sound);
     this.ui = null;
     this.physics = null;
@@ -269,8 +272,8 @@ class FlagBattleApp {
     // Update Physics
     this.physics.update(dt);
 
-    // Render WebGL or 2D Background Shader
-    if (this.webgl) {
+    // Render WebGL Background Shader if WebGL is active (not in 2D fallback mode)
+    if (this.webgl && !this.webgl.use2DFallback) {
       this.webgl.render({ x: this.physics.cx, y: this.physics.cy }, this.physics.arenaRadius);
     }
 
@@ -292,7 +295,13 @@ class FlagBattleApp {
     const p = this.physics;
 
     ctx.save();
-    ctx.clearRect(0, 0, this.width, this.height);
+
+    // In 2D fallback mode, draw solid background directly (faster than clearRect + multi-canvas compositing)
+    if (this.webgl && this.webgl.use2DFallback) {
+      this.drawDirectBackground(ctx, p.cx, p.cy, p.arenaRadius);
+    } else {
+      ctx.clearRect(0, 0, this.width, this.height);
+    }
 
     // Apply Camera Screen Shake
     if (this.screenShake > 0) {
@@ -323,6 +332,17 @@ class FlagBattleApp {
     this.drawParticles(ctx, p.particles, p.confetti, p.floatingTexts);
 
     ctx.restore();
+  }
+
+  drawDirectBackground(ctx, cx, cy, arenaRadius) {
+    const w = this.width;
+    const h = this.height;
+    const grad = ctx.createRadialGradient(cx, cy, arenaRadius * 0.1, cx, cy, Math.max(w, h) * 0.75);
+    grad.addColorStop(0, '#0a162b');
+    grad.addColorStop(0.5, '#050b17');
+    grad.addColorStop(1, '#020409');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
   }
 
   drawArenaRing(ctx, cx, cy, radius) {
