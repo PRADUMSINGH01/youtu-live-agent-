@@ -32,12 +32,11 @@ WORKDIR /app
 # Set Puppeteer & Node environment variables
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
-    NODE_ENV=production \
     DOCKER=true
 
-# Copy package dependencies and install
+# Copy package dependencies and install all dependencies (including dev for building)
 COPY package*.json ./
-RUN npm install
+RUN npm install --include=dev
 
 # Copy application source code
 COPY . .
@@ -47,6 +46,8 @@ RUN npm run build
 
 # Ensure recordings directory exists
 RUN mkdir -p /app/recordings
+
+ENV NODE_ENV=production
 
 EXPOSE 5000
 

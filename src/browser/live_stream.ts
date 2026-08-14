@@ -47,7 +47,7 @@ function ensureLocalServer(): Promise<void> {
 
     if (fs.existsSync(frontendDir)) {
       app.use(express.static(frontendDir));
-      app.get("/api/health", (_req, res) => {
+      app.get("/api/health", (_req: any, res: any) => {
         res.json({
           status: "streaming",
           live: true,
