@@ -1,6 +1,7 @@
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import type { App } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+import {getDatabase,Database} from 'firebase-admin/database'
 import type { Firestore } from "firebase-admin/firestore";
 import { getStorage, Storage } from "firebase-admin/storage";
 import dotenv from "dotenv";
@@ -12,6 +13,8 @@ class FirebaseService {
   private _app: App;
   private _db: Firestore;
   private _storage: Storage;
+  private _realtimedata: Database
+
 
   private constructor() {
     const projectId = process.env.FIREBASE_PROJECT_ID || "nomeet-b84a6";
@@ -23,7 +26,8 @@ class FirebaseService {
           .replace(/^["']|["']$/g, "")
           .replace(/\\n/g, "\n")
       : undefined;
-    const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || "nomeet-b84a6";
+    const storageBucket = process.env.FIREBASE_STORAGE_BUCKET 
+    const realtimedata =  process.env.REAL_TIME_DATA as string
 
     const existingApps = getApps();
     if (existingApps.length > 0) {
@@ -35,19 +39,30 @@ class FirebaseService {
             projectId,
             clientEmail,
             privateKey,
-          }),
+
+            
+          } ),
+          databaseURL:realtimedata,
           storageBucket,
         });
       } else {
         this._app = initializeApp({
           projectId,
           storageBucket,
+          databaseURL:realtimedata
+          
         });
       }
     }
 
     this._db = getFirestore(this._app);
+    try {
+      this._db.settings({ ignoreUndefinedProperties: true });
+    } catch {
+      // settings already initialized
+    }
     this._storage = getStorage(this._app);
+    this._realtimedata=getDatabase(this._app)
 
     console.log(`[Firebase] Initialized with project: ${projectId}, storageBucket: ${storageBucket}`);
   }
@@ -68,10 +83,17 @@ class FirebaseService {
   get db(): Firestore {
     return this._db;
   }
+  get realtimedata():Database{
+    return this._realtimedata
+  }
 }
 
 const firebase = FirebaseService.getInstance();
 
-export const app = firebase.app;
-export const db = firebase.db;
-export const storage = firebase.storage;
+const app = firebase.app;
+const db = firebase.db;
+const storage = firebase.storage;
+const realtimedate= firebase.realtimedata
+
+
+export {app ,db , storage,realtimedate}

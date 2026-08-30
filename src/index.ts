@@ -1,17 +1,21 @@
 import express, { type Request, type Response } from 'express';
+import http from 'http';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import streamRouter from './route/stream-mang/upload-video.route.js';
 import addStreamRouter from './route/stream-mang/add-streeam.route.js';
+import googleAuthRouter, { handleGoogleCallback } from './route/auth/google-auth.route.js';
+import youtubeRouter from './route/youtube/youtube.route.js';
 import { streamworker, emailworker } from './queues/workers.js';
 import { db } from './firebase/init.js';
 import path from 'path';
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 5000;
+const port = Number(process.env.PORT) || 5000;
 
 // Serve static frontend files
+app.use(express.static(path.resolve(process.cwd(), 'frontend', 'dist')));
 app.use(express.static(path.resolve(process.cwd(), 'frontend')));
 
 // Middleware
@@ -36,104 +40,45 @@ app.get('/api/health', (_req: Request, res: Response) => {
   });
 });
 
+// Authentication & Multi-Channel YouTube Routes
+app.use('/api/auth', googleAuthRouter);
+app.use('/api/youtube', youtubeRouter);
+
+// Universal Google OAuth Redirect URIs support
+app.get('/oauth/callback', handleGoogleCallback);
+app.get('/api/oauth/callback', handleGoogleCallback);
+app.get('/auth/google/callback', handleGoogleCallback);
+
 // RTMP Stream Management & Video Upload Routes
 app.use('/api', streamRouter);
 app.use('/api', addStreamRouter);
 
-// RTMP Connection Tester
-app.post('/api/rtmp/test-connection', (req: Request, res: Response) => {
-  const { platform = 'youtube', rtmpUrl, streamKey } = req.body;
-  if (!streamKey || streamKey.length < 5) {
-    return res.status(400).json({
-      success: false,
-      message: 'Invalid stream key format. Please verify your RTMP credentials.',
-    });
-  }
-
-  return res.status(200).json({
-    success: true,
-    message: `Connected successfully to ${platform.toUpperCase()} Ingest Server!`,
-    latencyMs: Math.floor(Math.random() * 20) + 10,
-    serverLocation: 'Firebase / RTMP Gateway Node',
-    timestamp: new Date().toLocaleTimeString(),
-  });
-});
-
-// Stream Broadcast Trigger & Status
-let globalStreamingState = {
-  isStreaming: false,
-  activePlatforms: [] as string[],
-  startedAt: null as string | null,
-  uptimeSeconds: 0,
-};
-
-app.post('/api/stream/start', (req: Request, res: Response) => {
-  const { platforms = ['youtube'], rtmpKeys = {}, streamTitle = '24/7 Live Stream' } = req.body;
-  globalStreamingState = {
-    isStreaming: true,
-    activePlatforms: platforms,
-    startedAt: new Date().toISOString(),
-    uptimeSeconds: 0,
-  };
-
-  return res.status(200).json({
-    success: true,
-    message: `Broadcast live session started across ${platforms.length} platform(s)`,
-    streamId: `stream_${Date.now()}`,
-    platforms,
-  });
-});
-
-app.post('/api/stream/stop', (_req: Request, res: Response) => {
-  globalStreamingState = {
-    isStreaming: false,
-    activePlatforms: [],
-    startedAt: null,
-    uptimeSeconds: 0,
-  };
-
-  return res.status(200).json({
-    success: true,
-    message: 'All live broadcast streams halted successfully',
-  });
-});
-
-app.get('/api/stream/status', (_req: Request, res: Response) => {
-  res.status(200).json({
-    isStreaming: globalStreamingState.isStreaming,
-    activePlatforms: globalStreamingState.activePlatforms,
-    uptimeSeconds: globalStreamingState.uptimeSeconds,
-    currentBitrateKbps: globalStreamingState.isStreaming ? 6500 : 0,
-    currentFps: 60,
-    droppedFramesPercent: 0.01,
-    totalViewers: globalStreamingState.isStreaming ? 142 : 0,
-    startedAt: globalStreamingState.startedAt,
-  });
-});
-
-app.get('/api/recorder/status', async (_req: Request, res: Response) => {
-  try {
-    const doc = await db.collection("recorder_sessions").doc("live").get();
-    if (doc.exists) {
-      return res.status(200).json({ success: true, ...doc.data() });
-    }
-    return res.status(200).json({
-      success: true,
-      status: 'idle',
-      elapsedSeconds: 0,
-      sizeFormatted: '0.0 MB',
-      fps: 60,
-    });
-  } catch (err: any) {
-    return res.status(200).json({
-      success: true,
-      status: 'idle',
-      error: err.message,
-    });
-  }
-});
-
 app.listen(port, () => {
-  console.log(`[YouTube Agent] Server running at http://localhost:${port}`);
-  console.log(`[YouTube Agent] Firebase Upload API ready at http://localhost:${port}/api/upload-video`);
+  console.log(`YouTube Agent Firebase Upload API ready at http://localhost:${port}`);
 });
+
+// Optional Port 3000 OAuth Bridge
+// If GOOGLE_REDIRECT_URI in .env is configured with port 3000 (e.g. http://localhost:3000/oauth/callback),
+// start a bridge server on port 3000 to catch and process the Google redirect.
+const redirectUri = process.env.GOOGLE_REDIRECT_URI || '';
+if (redirectUri.includes(':3000') && port !== 3000) {
+  const bridgeApp = express();
+  bridgeApp.use(cors({ origin: '*' }));
+  bridgeApp.get('/oauth/callback', handleGoogleCallback);
+  bridgeApp.get('/api/auth/google/callback', handleGoogleCallback);
+  bridgeApp.use((req: Request, res: Response) => {
+    res.redirect(`http://localhost:5000${req.originalUrl}`);
+  });
+
+  const bridgeServer = http.createServer(bridgeApp);
+  bridgeServer.listen(3000, () => {
+    console.log(`[OAuth Bridge] Listening on port 3000 for Google OAuth callbacks -> forwarding to backend`);
+  });
+  bridgeServer.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      console.log(`[OAuth Bridge] Port 3000 already in use (skipping bridge)`);
+    } else {
+      console.warn(`[OAuth Bridge] Port 3000 error:`, err.message);
+    }
+  });
+}

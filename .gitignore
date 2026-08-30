@@ -6,5 +6,7 @@ dist
 *.webm
 *.mp4
 *.png
+*.mp3
+downloads/
 recordings/
 npm-debug.log
