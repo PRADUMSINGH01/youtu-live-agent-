@@ -26,33 +26,33 @@ class FirebaseService {
           .replace(/^["']|["']$/g, "")
           .replace(/\\n/g, "\n")
       : undefined;
-    const storageBucket = process.env.FIREBASE_STORAGE_BUCKET 
-    const realtimedata =  process.env.REAL_TIME_DATA as string
+    const storageBucket = process.env.FIREBASE_STORAGE_BUCKET;
+    const realtimedata =
+      process.env.REAL_TIME_DATA ||
+      process.env.FIREBASE_DATABASE_URL;
 
     const existingApps = getApps();
     if (existingApps.length > 0) {
       this._app = existingApps[0]!;
     } else {
-      if (projectId && clientEmail && privateKey) {
-        this._app = initializeApp({
-          credential: cert({
-            projectId,
-            clientEmail,
-            privateKey,
+      const appOptions: any = {
+        projectId,
+        storageBucket,
+      };
 
-            
-          } ),
-          databaseURL:realtimedata,
-          storageBucket,
-        });
-      } else {
-        this._app = initializeApp({
+      if (realtimedata) {
+        appOptions.databaseURL = realtimedata;
+      }
+
+      if (projectId && clientEmail && privateKey) {
+        appOptions.credential = cert({
           projectId,
-          storageBucket,
-          databaseURL:realtimedata
-          
+          clientEmail,
+          privateKey,
         });
       }
+
+      this._app = initializeApp(appOptions);
     }
 
     this._db = getFirestore(this._app);
@@ -62,9 +62,21 @@ class FirebaseService {
       // settings already initialized
     }
     this._storage = getStorage(this._app);
-    this._realtimedata=getDatabase(this._app)
 
-    console.log(`[Firebase] Initialized with project: ${projectId}, storageBucket: ${storageBucket}`);
+    if (realtimedata) {
+      try {
+        this._realtimedata = getDatabase(this._app);
+      } catch (err) {
+        console.warn(
+          "[Firebase] Realtime database could not be initialized:",
+          err,
+        );
+      }
+    }
+
+    console.log(
+      `[Firebase] Initialized with project: ${projectId}, storageBucket: ${storageBucket}`,
+    );
   }
 
   public static getInstance(): FirebaseService {
