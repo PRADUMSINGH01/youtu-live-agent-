@@ -5,7 +5,7 @@ import { GetRefreshtoken } from "./refreshtoken.js";
 import { YouTubeLiveService } from "./youtube-setup.js";
 
 const ACCOUNT_EMAIL =
-  "hs947518@gmail.com";
+  "hs9040301@gmail.com";
 
 let activeStreamer:
   | FFmpegStreamer

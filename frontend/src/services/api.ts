@@ -7,7 +7,15 @@ import type {
   YouTubeLiveBroadcast,
 } from '../types';
 
-const API_BASE = '/api';
+const getApiBase = () => {
+  const envUrl = import.meta.env.VITE_API_URL as string | undefined;
+  if (envUrl) {
+    return `${envUrl.replace(/\/$/, '')}/api`;
+  }
+  return '/api';
+};
+
+const API_BASE = getApiBase();
 
 export async function fetchHealth(): Promise<SystemHealth> {
   const res = await fetch(`${API_BASE}/health`);
